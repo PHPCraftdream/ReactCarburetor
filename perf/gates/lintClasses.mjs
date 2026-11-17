@@ -5,14 +5,14 @@
 // guard against a quadratic index or lookup. Requires the release binary, like lintBinary.mjs.
 export default [
     {
-        id: 'lint-binary/classes@2k', improvement: 'CLS-9', scenario: 'lint-binary/classes',
+        id: 'lint-binary/classes@2k', improvement: 'R2026-11-17/CLS-9', scenario: 'lint-binary/classes',
         args: [2000], requires: [{path: 'native/target/release'}],
         gates: [
             {metric: 'markup', equals: 1000}, {metric: 'functions', equals: 500}, {metric: 'done', equals: true},
         ],
     },
     {
-        id: 'lint-binary/classes@8k', improvement: 'CLS-9', scenario: 'lint-binary/classes',
+        id: 'lint-binary/classes@8k', improvement: 'R2026-11-17/CLS-9', scenario: 'lint-binary/classes',
         args: [8000], requires: [{path: 'native/target/release'}],
         gates: [
             {metric: 'markup', equals: 4000}, {metric: 'functions', equals: 2000}, {metric: 'done', equals: true},

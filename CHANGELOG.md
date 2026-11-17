@@ -18,7 +18,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   off until `.carburetorrc.json` has a `classes` section naming the stylesheets, and report at
   `error` with it. The binary reads the stylesheets once, in parallel, into a class index before any
   file is checked; `--stdin` accepts a stylesheet buffer too. The plugin forwards the section, so
-  `require-function-class` also reports through oxlint and ESLint. See `docs/functional-classes.md`.
+  `require-function-class` also reports through oxlint and ESLint once switched on in the host's
+  config, and drops cached answers when a configured stylesheet changes. A stylesheet that does not
+  scan gets one `valid-function-class` finding instead of passing unchecked. See
+  `docs/functional-classes.md`.
 - A `root` key in `.carburetorrc.json` moves the directory `ignore`, `overrides` and `classes.css`
   resolve against.
 - `carburetor-lint --init-classes <path>` writes a stylesheet with every functional-class floor

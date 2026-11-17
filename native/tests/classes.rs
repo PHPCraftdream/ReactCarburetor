@@ -287,7 +287,7 @@ fn a_rule_can_be_switched_off_and_a_css_comment_silences_its_line() {
 }
 
 #[test]
-fn a_stylesheet_that_does_not_scan_reports_nothing() {
+fn a_stylesheet_that_does_not_scan_says_so_once() {
     let dir = project(&[
         (".carburetorrc.json", CONFIG),
         ("src/styles/app.css", STYLES),
@@ -298,7 +298,15 @@ fn a_stylesheet_that_does_not_scan_reports_nothing() {
     ]);
 
     let output = run(&dir, &["--format=json", "src"], None);
-    assert_eq!(findings(&output), []);
+    assert_eq!(
+        findings(&output),
+        [(
+            "src/styles/broken.css".to_string(),
+            1,
+            "carburetor/valid-function-class".to_string()
+        )]
+    );
+    assert_eq!(code(&output), 1);
 }
 
 #[test]

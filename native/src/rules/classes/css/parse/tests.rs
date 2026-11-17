@@ -234,3 +234,17 @@ fn an_unbalanced_parenthesis_does_not_swallow_the_file() {
     assert_eq!(sheet.nodes.len(), 2);
     assert_eq!(rule(&sheet.nodes[1]).selector.text(text), ".b");
 }
+
+#[test]
+fn a_comment_inside_an_apply_prelude_stays_in_the_prelude() {
+    let text = "@utility shape-a { @apply p-1 /* note; with { braces } */ m-1; }";
+    let sheet = parse(text);
+
+    assert!(sheet.errors.is_empty(), "{:?}", sheet.errors);
+    let utility = at(&sheet.nodes[0]);
+    let apply = at(&utility.block.as_ref().unwrap()[0]);
+    assert_eq!(
+        apply.prelude.text(text),
+        "p-1 /* note; with { braces } */ m-1"
+    );
+}

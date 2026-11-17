@@ -51,3 +51,21 @@ fn classes_defined_in_other_files_resolve() {
 
     assert!(findings.is_empty(), "{findings:?}");
 }
+
+#[test]
+fn comments_inside_apply_are_not_classes() {
+    let findings = beside_reference(
+        "@utility shape-tile {\n  @apply p-2 /* a note, not classes */ rounded-md/* tight */h-10;\n}\n",
+        RULE,
+    );
+
+    assert!(findings.is_empty(), "{findings:?}");
+
+    // A class after the comment is still checked, at its own column.
+    let findings = beside_reference(
+        "@utility shape-tile {\n  @apply p-2 /* note */ nonsense;\n}\n",
+        RULE,
+    );
+    assert_eq!(lines(&findings), [2]);
+    assert_eq!(findings[0].1, 25);
+}

@@ -22,6 +22,8 @@ type TBaseKey = (typeof BASE_KEYS)[number];
 interface IBases {
     config: string;
     key: string;
+    /** The rc's `classes.css` globs, relative to the project; empty without a `classes` section. */
+    stylesheets: readonly string[];
 }
 
 /**
@@ -207,6 +209,8 @@ export const basesConfig = (
         : Object.fromEntries(Object.entries(ruleOptions)
             .map(([name, options]) => [`carburetor/${name}`, ['error', options]]));
     const classes = rcClasses(cwd);
+    const css = (classes as {css?: unknown} | undefined)?.css;
+    const stylesheets = Array.isArray(css) ? css.filter((entry): entry is string => typeof entry === 'string') : [];
     const withRules = rules === undefined ? source : {...source, rules};
     const content = classes === undefined ? withRules : {...withRules, classes, root: path.resolve(cwd)};
 
@@ -225,5 +229,5 @@ export const basesConfig = (
         writeAtomic(config, key === '' ? '{}' : JSON.stringify(content));
     }
 
-    return {config, key};
+    return {config, key, stylesheets};
 };

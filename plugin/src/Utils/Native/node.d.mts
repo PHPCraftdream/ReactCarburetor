@@ -61,6 +61,8 @@ declare module "node:fs" {
     export function renameSync(oldPath: string, newPath: string): void;
     /** Only the fields this bridge reads: a lock's age, and its filesystem identity. */
     export function statSync(path: string): {dev: number; ino: number; mtimeMs: number};
+    /** Node 22+: the paths, relative to `cwd`, that match any of the patterns. */
+    export function globSync(pattern: string | readonly string[], options: {cwd: string}): string[];
 }
 
 declare module "node:os" {

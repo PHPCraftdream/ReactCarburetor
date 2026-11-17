@@ -120,3 +120,29 @@ fn utilities_on_no_floor_and_classes_outside_the_layer_are_reported() {
         "{findings:?}"
     );
 }
+
+#[test]
+fn a_stylesheet_that_does_not_scan_says_so_once() {
+    let findings = beside_reference(
+        "@utility shape-x { @apply px-4;\n.a-b { @apply nonsense; }\n",
+        RULE,
+    );
+
+    assert_eq!(lines(&findings), [1]);
+    assert!(
+        findings[0]
+            .2
+            .contains("this block is never closed, so no class rule checked"),
+        "{findings:?}"
+    );
+}
+
+#[test]
+fn the_unscanned_finding_can_be_silenced_like_any_other() {
+    let findings = beside_reference(
+        "/* carburetor-disable valid-function-class */\n@utility shape-x { @apply px-4;\n",
+        RULE,
+    );
+
+    assert!(findings.is_empty(), "{findings:?}");
+}

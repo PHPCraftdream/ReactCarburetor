@@ -1,7 +1,7 @@
 import {createHash} from "node:crypto";
 import {spawnSync} from "node:child_process";
 import {
-    closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, statSync, unlinkSync,
+    closeSync, existsSync, globSync, mkdirSync, openSync, readdirSync, readFileSync, statSync, unlinkSync,
 } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -301,6 +301,48 @@ const changedSince = (filename: string | undefined, startMs: number): boolean =>
     }
 };
 
+/** How long a globbed list of stylesheets is trusted before the globs run again: a new stylesheet
+ * is noticed within this window, while every call still stats the listed ones. */
+const STYLESHEET_LIST_TTL_MS = 5_000;
+
+/** Globbed stylesheet lists by project and patterns, with when each was taken. */
+const stylesheetLists = new Map<string, {at: number; files: string[]}>();
+
+/** The newest mtime among the stylesheets the `classes` section names, or 0 without any. A run
+ * began before that time may hold a class index that no longer describes them, so the markup
+ * rule's findings from it are stale even though the file being linted did not change.
+ *
+ * @param cwd - the project the globs are relative to
+ * @param patterns - the rc's `classes.css` globs
+ * @returns the newest modification time, in milliseconds since the epoch
+ */
+const stylesheetStamp = (cwd: string, patterns: readonly string[]): number => {
+    if (patterns.length === 0) {
+        return 0;
+    }
+
+    const key = `${cwd}\u0000${patterns.join('\u0000')}`;
+    const now = Date.now();
+    let held = stylesheetLists.get(key);
+
+    if (!held || now - held.at > STYLESHEET_LIST_TTL_MS) {
+        held = {at: now, files: globSync(patterns, {cwd}).map((file) => path.resolve(cwd, file))};
+        stylesheetLists.set(key, held);
+    }
+
+    let newest = 0;
+
+    for (const file of held.files) {
+        try {
+            newest = Math.max(newest, statSync(file).mtimeMs);
+        } catch {
+            // A stylesheet deleted since the glob: the next glob drops it.
+        }
+    }
+
+    return newest;
+};
+
 /** The file's saved content, or `undefined` when it has none: a buffer with no file behind it
  * (or an unreadable one) is always treated as differing, so it takes the in-memory path. */
 const diskText = (filename: string): string | undefined => {
@@ -338,8 +380,12 @@ export const runNative = (
     settings?: Record<string, unknown>,
     forwarded?: Readonly<Record<string, Record<string, unknown>>>,
 ): INativeDiagnostic[] => {
-    const {config, key} = basesConfig(cwd, settings, forwarded);
+    const {config, key, stylesheets} = basesConfig(cwd, settings, forwarded);
     const entry = runKey(cwd, key);
+    const styled = stylesheetStamp(cwd, stylesheets);
+    // A cached answer predates a stylesheet edit when the stylesheets changed after it began.
+    const stale = (startMs: number): boolean =>
+        changedSince(filename, startMs) || (styled !== 0 && styled >= startMs - MTIME_SLACK_MS);
 
     // One re-scan path for both cache hits: a new start time is adopted only after the scan
     // succeeded, so a failed one cannot make stale results look fresh.
@@ -354,13 +400,17 @@ export const runNative = (
 
     if (text !== undefined && filename !== undefined && text !== diskText(filename)) {
         // One spawn per distinct buffer text, not per rule and not per keystroke.
-        return cachedFileResult(filename, text, () => runNativeText(cwd, filename, text, config, resolve), key);
+        // The stylesheets' stamp is part of the key: a buffer re-checked after a stylesheet edit
+        // is a new question, not a cached one.
+        const scope = styled === 0 ? key : `${key}:${styled}`;
+
+        return cachedFileResult(filename, text, () => runNativeText(cwd, filename, text, config, resolve), scope);
     }
 
     const known = cachedRuns.get(entry);
 
     if (known) {
-        if (!changedSince(filename, known.startMs)) {
+        if (!stale(known.startMs)) {
             return known.diagnostics;
         }
 
@@ -426,7 +476,7 @@ export const runNative = (
 
     // A file result may describe a file as it stood before that file was last saved, so the same
     // freshness check the module cache applies decides between this answer and a re-scan.
-    if (changedSince(filename, startMs)) {
+    if (stale(startMs)) {
         return rescan();
     }
 

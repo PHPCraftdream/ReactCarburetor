@@ -125,11 +125,31 @@ pub fn apply_classes<'a>(rule: &AtRule, text: &'a str) -> Vec<Applied<'a>> {
     let prelude = rule.prelude.text(text);
     let base = rule.prelude.start;
     let mut classes = Vec::new();
-    let mut cursor = 0usize;
+    let bytes = prelude.as_bytes();
+    let mut index = 0usize;
 
-    for class in prelude.split_ascii_whitespace() {
-        let start = cursor + prelude[cursor..].find(class).unwrap_or(0);
-        cursor = start + class.len();
+    // Byte-wise over the prelude: whitespace separates classes, and a `/* … */` comment is
+    // skipped whole, so a note between classes is never read as one.
+    while index < bytes.len() {
+        if bytes[index].is_ascii_whitespace() {
+            index += 1;
+            continue;
+        }
+        if bytes[index..].starts_with(b"/*") {
+            index = prelude[index + 2..]
+                .find("*/")
+                .map_or(bytes.len(), |end| index + 2 + end + 2);
+            continue;
+        }
+
+        let start = index;
+        while index < bytes.len()
+            && !bytes[index].is_ascii_whitespace()
+            && !bytes[index..].starts_with(b"/*")
+        {
+            index += 1;
+        }
+        let class = &prelude[start..index];
         if class == "!important" {
             continue;
         }

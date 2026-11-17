@@ -189,19 +189,30 @@ have nothing to check against.
 ## How it runs
 
 The `carburetor-lint` binary reads every configured stylesheet once, in parallel, before any file is
-checked, and builds an index of what each one defines. The stylesheet rules then run on each `.css`
+checked, and builds an index of what each one defines. It walks only the directories the `css`
+globs start in (`src/styles` for `src/styles/**/*.css`), not the whole project. The stylesheet rules then run on each `.css`
 file the walk reaches that matches `css`; the markup rule runs with the TypeScript rules and looks
 classes up in the index. `--stdin` works for both kinds of buffer: an unsaved stylesheet stands in
 for its file in the index, and an unsaved component is checked against the stylesheets on disk.
 
 Through oxlint or ESLint, the plugin forwards the project's `classes` section and root to the
-binary, so `require-function-class` reports in the editor. The stylesheet rules report only from
-the CLI, because neither host lints CSS. Suppression comments work in CSS too:
+binary. The recommended preset ships every class rule `off` — a host config does not know whether
+the project has a `classes` section — so turn the markup rule on in the host's own config to see
+it in the editor:
+
+```json
+{"rules": {"carburetor/require-function-class": "error"}}
+```
+
+A cached answer is dropped when a stylesheet the `css` globs name changes, so a Function added to
+the CSS stops being reported in an open component without a restart. The stylesheet rules report
+only from the CLI, because neither host lints CSS. Suppression comments work in CSS too:
 `/* carburetor-disable-next-line valid-tone-class */`.
 
-A stylesheet the scanner cannot make sense of (an unclosed block, a stray `}`) reports nothing, the
-way a TypeScript file that does not parse reports nothing: Tailwind's own build names the syntax
-error.
+A stylesheet the scanner cannot make sense of (an unclosed block, a stray `}`, an unclosed comment)
+is not checked — rules over half a stylesheet would guess — but it is not silent: one
+`valid-function-class` finding at the first problem says the file went unchecked. `@apply` lists
+may carry `/* … */` comments; they are not read as classes.
 
 ## Limits
 

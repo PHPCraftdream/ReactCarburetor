@@ -10,6 +10,10 @@ below is built correctly, and that markup carries only top-floor functional clas
 floors, no Tailwind utilities. Every stage ships with tests; nothing is merged on a green build
 alone.
 
+> §1–§8 are the plan as written before implementation. Where they differ from what shipped
+> (`cssparser`, the trait kinds, the Brick-name check, stylesheet errors, conformance coverage),
+> §9 and [`docs/functional-classes.md`](../functional-classes.md) are current.
+
 ## 1. The methodology being enforced
 
 Markup gets one class per element, and that class names what the element does. Everything
@@ -229,7 +233,13 @@ without an explicit command.
   exactly one default owner (a unit test pins this).
 - **"A Function name is not a Brick" dropped.** The Brick table does not validate values, so
   `order-status` would read as the `order` utility; reserved first words stay.
-- **A stylesheet that does not scan reports nothing**, like a TypeScript file that does not parse.
+- **A stylesheet that does not scan is reported once.** First it reported nothing, like a TypeScript
+  file that does not parse; review showed that lets a broken stylesheet pass as clean, so it now
+  gets one `valid-function-class` finding at the first problem and no other checks.
+- **Review fixes.** The bridge drops cached answers when a configured stylesheet changes (the
+  stylesheets' newest mtime, globbed with a 5 s TTL); comments in `@apply` are skipped; the index
+  walks only the globs' base directories; `require-function-class` is covered through the real
+  oxlint in `__tests__/Native/Bridge/classesBridge.test.ts`.
 - **The bridge.** It forces every rule on from the command line, so a class rule switched on there
   without a `classes` section is not an error (it has nothing to read); in the config file it still
   is. The bridge forwards the project rc's `classes` with a new top-level `root` key, because its
