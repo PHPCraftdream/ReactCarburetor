@@ -77,23 +77,34 @@ carburetor-lint [options] [paths...]
 Every valued flag takes both spellings, `--flag value` and `--flag=value`.
 
 **Configuration.** JSON, because serde_json is already a dependency and oxlint, the ESLint host and
-this crate then share one format — one format, no second parser. Two keys, `rules` and `ignore`;
-anything else is rejected rather than ignored, so a typo fails loudly. A rule's value is a severity
-string: `error`, `warn` or `off`. Legacy `[severity, options]` payloads may be stored by host
-configuration, but options are not consumed by the native rules. Rule names may be bare or carry the
-`carburetor/`
-prefix. A missing default config is not an error — the defaults apply — but a `--config` path that
-is not there is, because the caller asked for that exact file.
+this crate then share one format — one format, no second parser. An unknown key is rejected rather
+than ignored, so a typo fails loudly. The keys of `.carburetorrc.json`:
 
-The defaults follow `../plugin/src/recommended.mts`; the optional hook-free rule remains off.
-The bridge applies each host's enabled rules and suppression comments. A native rule set to `off`
-never runs, so turning rules off makes the pass cheaper rather than only quieter.
+| Key | Holds |
+|-----|-------|
+| `rules` | per rule, a severity (`error`, `warn`, `off`) or `[severity, options]`; names bare or with the `carburetor/` prefix |
+| `ignore` | glob patterns the walk skips |
+| `overrides` | `[{files: [globs], rules: {...}}]`: rule settings for the files the globs match |
+| `componentBases`, `storeBases` | project base classes the rules recognise as components and stores, added to the built-ins |
+| `classes` | the functional-class section: the stylesheets to read and the methodology's vocabulary ([`../docs/functional-classes.md`](../docs/functional-classes.md)) |
+| `root` | the directory `ignore`, `overrides` and `classes.css` resolve against, relative to the config file; the plugin bridge sets it |
 
-Recognition is fixed and syntactic: component bases are `AntiHookComponent` and
-`ScopedAntiHookComponent`, store bases are `Carburetor` and `ResourceCarburetor`, and render is
-recognised by the fixed method name `render`. Custom components should directly inherit a
-component base; custom intermediate classes are not generally recognised. Disable recognition by
-suppressing a diagnostic or setting that rule's severity to `off`.
+Five rules take options, validated when the config loads: `require-module-function` (`scope`),
+`max-render-depth` (`max`), `max-line-length`, `no-parent-import` (`roots`) and `require-tsdoc`; see
+[`../docs/rules.md`](../docs/rules.md). A missing default config is not an error — the defaults
+apply — but a `--config` path that is not there is, because the caller asked for that exact file.
+
+The defaults follow `../plugin/src/recommended.mts`; the optional hook-free rule and the
+functional-class rules stay off until configured. The bridge applies each host's enabled rules and
+suppression comments. A native rule set to `off` never runs, so turning rules off makes the pass
+cheaper rather than only quieter.
+
+Recognition is syntactic: component bases are `AntiHookComponent` and `ScopedAntiHookComponent`,
+store bases are `Carburetor` and `ResourceCarburetor`, plus whatever `componentBases` and
+`storeBases` add; render is recognised by the method name `render`. A class that extends a base
+imported from another file and not listed there is reported once by `no-unrecognized-base`, since
+no other rule would check it. Disable recognition by suppressing a diagnostic or setting that rule's
+severity to `off`.
 
 **Optional hook-free component policy.** `no-react-hooks-in-components` is off by default.
 Enable it without changing the recommended rules:
