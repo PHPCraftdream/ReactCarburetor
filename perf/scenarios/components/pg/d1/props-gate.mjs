@@ -28,15 +28,27 @@ if (!process.argv.includes('--child')) {
     const used = () => getHeapStatistics().used_heap_size;
     for (let i = 0; i < 1000; i++) used();
     let monotone = true;
+    // Only a collection frees heap, so a window whose used heap shrinks had one inside it despite the
+    // flags above, and its figure is not an allocation count. Such a window is measured again, up to
+    // three times, with its calls uncounted; `monotone` turns false only when none came out clean.
     const measure = fn => {
-        globalThis.gc();
-        const first = used();
-        let previous = first;
-        for (let i = 0; i < 5; i++) {
-            for (let j = 0; j < 2000; j++) if (!fn()) accepted++;
-            const now = used(); monotone &&= now >= previous; previous = now;
+        const start = accepted;
+        let figure = 0;
+        for (let attempt = 0; attempt < 3; attempt++) {
+            accepted = start;
+            globalThis.gc();
+            const first = used();
+            let previous = first;
+            let clean = true;
+            for (let i = 0; i < 5; i++) {
+                for (let j = 0; j < 2000; j++) if (!fn()) accepted++;
+                const now = used(); clean &&= now >= previous; previous = now;
+            }
+            figure = (previous - first) / 1024;
+            if (clean) return figure;
         }
-        return (previous - first) / 1024;
+        monotone = false;
+        return figure;
     };
     measure(compare); measure(copying);
     accepted = 200000; monotone = true;
