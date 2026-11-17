@@ -330,6 +330,8 @@ describe('lint plugin in the oxlint host', () => {
             'carburetor(no-duplicate-effect-name)',
             'carburetor(require-effect-deps)',
             'carburetor(no-store-read-in-effect-deps)',
+            'carburetor(no-inline-store-effect)',
+            'carburetor(prefer-store-effect)',
         ];
 
         expected.forEach((ruleId: string) => {

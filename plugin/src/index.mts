@@ -16,6 +16,8 @@ import {noAsyncEffect} from "./Rules/Effects/noAsyncEffect.mts";
 import {noClosureInUpdate} from "./Rules/Allocations/noClosureInUpdate.mts";
 import {noDuplicateEffectName} from "./Rules/Effects/noDuplicateEffectName.mts";
 import {noStoreReadInEffectDeps} from "./Rules/Effects/noStoreReadInEffectDeps.mts";
+import {noInlineStoreEffect} from "./Rules/Effects/noInlineStoreEffect.mts";
+import {preferStoreEffect} from "./Rules/Effects/preferStoreEffect.mts";
 import {requireEffectDeps} from "./Rules/Effects/requireEffectDeps.mts";
 import {noComputedGetInComputed} from "./Rules/Reads/noComputedGetInComputed.mts";
 import {noComputedGetInRender} from "./Rules/Reads/noComputedGetInRender.mts";
@@ -66,6 +68,8 @@ const plugin: IPlugin = {
         'no-direct-data-write': noDirectDataWrite,
         'no-duplicate-effect-name': noDuplicateEffectName,
         'no-store-read-in-effect-deps': noStoreReadInEffectDeps,
+        'no-inline-store-effect': noInlineStoreEffect,
+        'prefer-store-effect': preferStoreEffect,
         'no-escaping-tracked-data': noEscapingTrackedData,
         'no-external-data-mutation': noExternalDataMutation,
         'no-function-in-render': noFunctionInRender,

@@ -7,7 +7,7 @@ import {RECOMMENDED} from '@plugin/recommended.mts';
 describe('prefer-readonly-array-param plugin metadata', () => {
     test('is exported with a code-fix and is disabled in recommended', () => {
         expect(plugin.rules['prefer-readonly-array-param']).toBeDefined();
-        expect(Object.keys(plugin.rules)).toHaveLength(39);
+        expect(Object.keys(plugin.rules)).toHaveLength(41);
         expect(plugin.rules['prefer-readonly-array-param'].meta?.fixable).toBe('code');
         expect(RECOMMENDED['carburetor/prefer-readonly-array-param']).toBe('off');
 

@@ -1,4 +1,4 @@
-import {AntiHookComponent} from "@react-carburetor/core";
+import {AntiHookComponent, Carburetor} from "@react-carburetor/core";
 import {resource} from "./sources";
 
 /**
@@ -40,3 +40,25 @@ class DraftSaver extends AntiHookComponent<{draft: {getData(): {text: string}}}>
 }
 
 void DraftSaver;
+
+const selectText = (data: {text: string}): string => data.text;
+
+class StoreEffects extends AntiHookComponent<{draft: Carburetor<{text: string}>}> {
+    protected useEffects(): void {
+        // no-inline-store-effect
+        this.useStoreEffect('storeSave', this.props.draft, selectText, this.save.bind(this));
+
+        // prefer-store-effect
+        this.useEffect('storeWatch', () => this.props.draft.watch(selectText, saveDraft), [this.props.draft]);
+    }
+
+    public render() {
+        return <span/>;
+    }
+
+    private save(): void {
+        saveDraft();
+    }
+}
+
+void StoreEffects;

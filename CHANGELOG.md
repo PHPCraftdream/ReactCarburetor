@@ -12,6 +12,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `carburetor/no-store-read-in-effect-deps` (`warn` in the recommended preset): inside `useEffects`, a `this.useEffect`
   dependency taken with `getData()` (directly, through a constant of the method, or as a held dependency array) is
   reported with a pointer to `useStoreEffect`.
+- `carburetor/no-inline-store-effect` (`error` in the recommended preset): a selector or effect handed to
+  `this.useStoreEffect` that is built on every render (an arrow, a function expression, a `.bind(...)`, or a function a
+  constant of the same method holds). `useStoreEffect` keeps it as a dependency, so each render would unsubscribe,
+  subscribe again and run the effect once more with no previous value.
+- `carburetor/prefer-store-effect` (`warn` in the recommended preset): a store's `watch(select, onChange)` or a
+  computed's `watch(onChange)` started by hand in a `this.useEffect` callback or in `componentDidMount`, with a pointer
+  to `useStoreEffect`, which runs the effect for the current value, keeps the disposer and orders the cleanups.
 - `carburetor/no-unrecognized-base` (`warn` in the recommended preset): a class that extends a project base imported
   from another file, not listed in `componentBases`/`storeBases`, and plainly uses the engine (`this.useCarburetor`,
   `this.useEffect`, `useEffects`, `this.draft`, …) is reported once with the list to add the base to. Before, every

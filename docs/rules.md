@@ -5,10 +5,11 @@ name; [hazards.md](hazards.md) is the same material organised by mistake, with t
 triggers each one, why it is silent at runtime, and where the rule can be wrong.
 
 The recommended rules protect carburetor logic and allocation hygiene. The separately enabled
-`no-hooks` preset adds a component-architecture policy. The plugin registry contains **39 rules**:
-31 catalogue rules, `no-store-read-in-effect-deps`, the `no-unrecognized-base` setup check, the
+`no-hooks` preset adds a component-architecture policy. The plugin registry contains **41 rules**:
+31 catalogue rules, three `useStoreEffect` rules (`no-store-read-in-effect-deps`,
+`no-inline-store-effect`, `prefer-store-effect`), the `no-unrecognized-base` setup check, the
 optional `no-react-hooks-in-components` policy, and five house-style rules. The native registry also
-has 39 entries. `no-module-level-store` and `one-export-per-file` are off in recommended configuration.
+has 41 entries. `no-module-level-store` and `one-export-per-file` are off in recommended configuration.
 
 ## Functional component reads
 
@@ -237,6 +238,8 @@ until your project changes shape.
 | `no-module-level-store` | off | A store created once per module, which a server shares across requests | [H18](hazards.md) |
 | `no-unrecognized-base` | warn | A class that uses the engine through an imported base class not listed in `componentBases`/`storeBases`, so no rule checks it; setup check | — |
 | `no-store-read-in-effect-deps` | warn | An effect dependency taken with `getData()`, which is compared only when the component re-renders for another reason, so the effect does not follow the store; use `useStoreEffect` | — |
+| `no-inline-store-effect` | error | A selector or effect written inline (an arrow, a function expression, a `.bind(...)`, or a function a constant of the same method holds) and handed to `useStoreEffect`, which re-subscribes and re-runs the effect on every render | — |
+| `prefer-store-effect` | warn | A store's `watch(select, onChange)` or a computed's `watch(onChange)` started by hand in a `this.useEffect` callback or `componentDidMount`; use `useStoreEffect` | — |
 | `no-memo-over-store-read` | warn | `useMemo`/`useCallback` over hook-read values; derive in the selector or a `Computed` | [H33](hazards.md) |
 | `no-capturing-hook-selector` | warn | Inline hook selector captures render state; select whole record then pick, or use `AntiHookComponent#useCarburetor` without a selector | [H34](hazards.md) |
 | `one-export-per-file` | off | A second runtime-value export in one file; every file ships at most one value, type exports are unlimited | [H36](hazards.md) |
@@ -426,6 +429,27 @@ the same field. The rule reports, inside a `useEffects` method, a `this.useEffec
 calls `getData()`, that names a constant of the same method initialized from `getData()` (destructured
 or not), or a whole dependency array held in such a constant. Follow store data with
 `useStoreEffect(name, store, select, effect)` instead. It is `warn` in the recommended preset.
+
+## `no-inline-store-effect`
+
+`useStoreEffect(name, store, select, effect)` keeps `[store, select, effect]` as its effect's
+dependencies, and `useEffects` runs on every render. A selector or effect written inline is a new
+function each time, so every render unsubscribes, subscribes again and runs the effect once more with
+no previous value: an autosave saves on every render, a request repeats, and nothing fails. The rule
+reports, in a `this.useStoreEffect` call, a selector or effect that is an arrow, a function
+expression, a `.bind(...)` call, or a name a constant or nested function of the same method holds.
+Pass a module-level function or a method (`this.save`) instead. It is `error` in the recommended
+preset.
+
+## `prefer-store-effect`
+
+A `watch(select, onChange)` on a store, or `watch(onChange)` on a computed, started inside a
+`this.useEffect` callback or in `componentDidMount` is the code `useStoreEffect` replaces: the
+component has to run the effect for the current value itself, keep the disposer, and order the run's
+cleanup against the watch's. `this.useStoreEffect(name, store, select, effect)`, or
+`(name, computed, effect)`, does all three. A store watching itself (`this.watch`) and calls whose
+arguments cannot be callbacks (`fs.watch('dir')`) are not reported. It is `warn` in the recommended
+preset.
 
 ## Setup check: `no-unrecognized-base`
 
