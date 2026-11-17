@@ -75,7 +75,10 @@ describe('persist partitions: branches that cannot be written', () => {
         const store = new Carburetor<{a?: {n: number}; b: {n: number}}>({a: {n: 1}, b: {n: 1}});
         const stop = persist(store, {key: 'app', storage, partitions: ['a', 'b']});
 
+        // The first write seals every branch, so 'a' is stored before it disappears.
+        store.setData({a: {n: 2}, b: {n: 1}});
         stop.flush();
+        expect(storage.entries.has('app.a')).toBe(true);
         store.setData({b: {n: 2}});
         stop.flush();
         expect(storage.removed).toEqual(['app.a']);
