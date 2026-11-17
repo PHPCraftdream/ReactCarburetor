@@ -74,7 +74,12 @@ export class Toolbar extends ScopedAntiHookComponent {
         );
     }
 
-    /** Undo and redo, each enabled only when there is a step to take. */
+    /**
+     * Undo and redo, each enabled only when there is a step to take.
+     *
+     * @param canUndo - whether there is a step to undo
+     * @param canRedo - whether there is a step to redo
+     */
     protected renderHistory(canUndo: boolean, canRedo: boolean) {
         return (
             <>

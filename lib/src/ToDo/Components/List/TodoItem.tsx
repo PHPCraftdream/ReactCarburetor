@@ -118,7 +118,11 @@ export class TodoItem extends ScopedAntiHookComponent<ITodoItemProps, ITodoItemS
         );
     }
 
-    /** The done checkbox, drawn over a native input so it stays keyboard-accessible. */
+    /**
+     * The done checkbox, drawn over a native input so it stays keyboard-accessible.
+     *
+     * @param done - whether the todo is done
+     */
     protected renderDone(done: boolean) {
         return (
             <label className="relative flex cursor-pointer items-center">
@@ -134,7 +138,12 @@ export class TodoItem extends ScopedAntiHookComponent<ITodoItemProps, ITodoItemS
         );
     }
 
-    /** The editable title, struck through and read-only once the todo is done. */
+    /**
+     * The editable title, struck through and read-only once the todo is done.
+     *
+     * @param title - the todo's title
+     * @param done - whether the todo is done
+     */
     protected renderTitle(title: string, done: boolean) {
         const titleClass = 'w-full bg-transparent text-sm outline-none placeholder:text-slate-400 '
             + (done
