@@ -396,12 +396,15 @@ mod tests {
         );
 
         assert_eq!(lines(&diagnose(source, check)), [1, 2]);
-        assert!(diagnose(source, check)[0].message.contains("storeEffect's disposer"));
+        assert!(diagnose(source, check)[0]
+            .message
+            .contains("storeEffect's disposer"));
     }
 
     #[test]
     fn a_discarded_store_effect_inside_a_test_is_not_reported() {
-        let source = "it('follows', () => {\n    storeEffect(store, selectTitle, showTitle);\n});\n";
+        let source =
+            "it('follows', () => {\n    storeEffect(store, selectTitle, showTitle);\n});\n";
 
         assert!(diagnose(source, check).is_empty());
     }
