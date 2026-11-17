@@ -3,8 +3,10 @@
 Do not publish or change package versions without the maintainer's explicit release
 decision. The first release is `0.1.0`.
 
-State after `0.2.0` (published 2026-11-15): all ten packages are on npm. `0.1.0` went out on
-2026-10-28 with `auth = token`; `0.2.0` is the first release through `auth = trusted`, and the
+State after `0.3.0` (published 2026-11-17, Release run 44085591188, `auth = trusted`): all ten
+packages are on npm at `0.3.0` under `latest`, and the post-publish install passed on every platform.
+`0.1.0` went out on 2026-10-28 with `auth = token`; `0.2.0` (2026-11-15) was the first release
+through `auth = trusted`, and the
 registry shows the GitHub Actions publisher (`npm-oidc-no-reply@github.com`) as the author of
 every package. The `NPM_TOKEN` secret may stay in the `npm` environment as the fallback until the
 maintainer removes it; see "Setup for `trusted`" below.
