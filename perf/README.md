@@ -60,8 +60,11 @@ measures the `scale.from` source entries a selected entry needs, without printin
 Scenarios no timed gate reads run side by side, `BENCH_JOBS` children at a time (default: one fewer
 than the cores), before the timed ones, which then run alone, one child at a time. Timed means a gate
 on an `...Ms` metric (directly or as the `over` of a ratio), a `scale` gate, or the `scale.from`
-source of one; an entry without gates counts as timed. Counters, heap figures and GC verdicts belong
-to each child process, so neighbours do not move them. `--against` compares every `...Ms` metric and
+source of one; an entry without gates counts as timed. A scenario that depends on garbage collection
+(`WeakRef`, `FinalizationRegistry`, `gc()`, `--expose-gc`) runs alone too, since whether a weak
+reference is collected in time can depend on the CPU its neighbours take. Counters and heap figures
+belong to each child process, so neighbours do not move them. A concurrent measurement reports the
+summed run time of its children as its elapsed time. `--against` compares every `...Ms` metric and
 runs everything alone; `bench:ci`'s baseline comparison keeps the concurrency, since its timing
 comparisons are informational. `BENCH_JOBS=1` restores one child at a time throughout.
 

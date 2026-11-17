@@ -107,10 +107,12 @@ assignment would miss three quarters of the hazard.
 **31 catalogue rules are implemented**, covering H1–H23, H26 and H29–H37: reads (H1–H5), writes
 (H6–H11), lifecycle (H12, H13, H21, H22, H35), effects (H14–H16), boundaries (H17–H20, H36) and
 allocations (H29–H34), with H23 and H26 folded into shared rules. H24 and H25 are not implemented;
-H27 is not a rule. The plugin registry totals 42 rules: the 31 catalogue rules, `require-hoisted-constant`, three
-`useStoreEffect` rules (`no-store-read-in-effect-deps`, `no-inline-store-effect`,
+H27 is not a rule. The plugin registry totals 54 rules: the 31 catalogue rules, `require-hoisted-constant`,
+`max-render-lines`, three `useStoreEffect` rules (`no-store-read-in-effect-deps`, `no-inline-store-effect`,
 `prefer-store-effect`), the `no-unrecognized-base` setup check, optional
-`no-react-hooks-in-components`, and five house-style rules; the native registry also totals 42.
+`no-react-hooks-in-components`, five house-style rules and eleven opt-in
+[functional-class rules](functional-classes.md); the native registries also total 54, 44 over
+TypeScript and ten over stylesheets.
 `no-module-level-store` and `one-export-per-file` remain off in recommended. Detection lives in
 `native/src/rules/`, tested there with oxc's parser.
 The thin host bridge reports native diagnostics. Real fixture and host coverage live in

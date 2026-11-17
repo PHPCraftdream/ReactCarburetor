@@ -263,7 +263,7 @@ const d = <div style={{color: user.color, background: theme}} />;
 const e = <div style={styles} />;
 const f = <svg style={{fill: "none", stroke: "currentColor", color: "inherit", outlineColor: "transparent"}} />;
 const g = <div style={{background: "url(/a.png) no-repeat", backgroundColor: "Transparent"}} />;
-const h = <div style={{background: "#000"}} />;
+const h = <div style={{background: "#000", fill: "url(#fade)", stroke: "URL(#edge)"}} />;
 const i = <div {...{style: {color: "red"}}} />;
 const j = createElement("div", {style: {borderColor: "var(--palette-gray-100)"}});
 "##;

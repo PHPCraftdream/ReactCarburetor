@@ -73,11 +73,13 @@ export const comparePrevious = async (baseline, currentRoot, runs, output) => {
         jobs.set(key, {key, scenario: resolve('perf/scenarios', entry.scenario + '.mjs'), args: entry.args ?? [], roots,
             runs: demands.get(key) ?? runs, nodeArgs: entry.nodeArgs ?? [], owner: entry.id});
     }
-    // A concurrent measurement has no elapsed time of its own: its rows report 0 and `concurrent`.
-    for (const [key, samples] of await sampleConcurrently([...jobs.values()])) {
+    // A concurrent measurement reports the summed time of its children, marked `concurrent`.
+    const childMs = new Map();
+    for (const [key, samples] of await sampleConcurrently([...jobs.values()], undefined, childMs)) {
         const {owner, runs: sampleCount} = jobs.get(key);
-        measured.set(key, samples instanceof Error ? {owner, sampleCount, concurrent: true, error: samples}
-            : {owner, sampleCount, concurrent: true, samples});
+        const concurrent = childMs.get(key) ?? 0;
+        measured.set(key, samples instanceof Error ? {owner, sampleCount, concurrent, error: samples}
+            : {owner, sampleCount, concurrent, samples});
     }
     for (const entry of ordered) {
         const missing = (entry.requires ?? []).filter(item => !existsSync(resolve(item.path))).map(item => item.path);
@@ -106,7 +108,7 @@ export const comparePrevious = async (baseline, currentRoot, runs, output) => {
             const samples = cached.samples;
             const sharedMeasurement = cached.owner !== entry.id;
             const sampleCount = cached.sampleCount;
-            const elapsedMs = sharedMeasurement || cached.concurrent ? 0 : Date.now() - cached.started;
+            const elapsedMs = sharedMeasurement ? 0 : cached.concurrent !== undefined ? cached.concurrent : Date.now() - cached.started;
             const base = summarize(samples.get('before')), fixed = summarize(samples.get('after'));
             before.set(entry.id, base); after.set(entry.id, fixed);
             const beforeGates = evaluate(entry, base, before), afterGates = evaluate(entry, fixed, after);
@@ -114,7 +116,7 @@ export const comparePrevious = async (baseline, currentRoot, runs, output) => {
             report.baselineGateFailures += beforeGates.filter(result => !result.ok).length;
             report.currentGateFailures += afterGates.filter(result => !result.ok).length;
             report.timingFailures += timings.filter(result => !result.ok).length;
-            report.rows.push({id: entry.id, beforeGates, afterGates, timings, elapsedMs, ...(cached.concurrent ? {concurrent: true} : {}),
+            report.rows.push({id: entry.id, beforeGates, afterGates, timings, elapsedMs, ...(cached.concurrent !== undefined ? {concurrent: true} : {}),
                 sampleCount, timingConfidence: sampleCount === 1 ? 'single-pair informational' : 'multi-sample informational',
                 ...(sharedMeasurement ? {sharedMeasurement: true, measurementOwner: cached.owner} : {}),
                 before: Object.fromEntries(Object.entries(base).map(([key, value]) => [key, show(value)])),

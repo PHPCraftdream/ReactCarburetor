@@ -39,13 +39,17 @@ const keyFor = entry => JSON.stringify([entry.scenario, entry.args ?? [], entry.
  * that depends on wall-clock time. Timing is what the `Ms` suffix names (as `compare` reads it), so
  * an entry is timed when a gate reads an `...Ms` metric, directly or through `over`, when a scale
  * gate compares it with another entry, or when it is that other entry; an entry without gates is
- * treated as timed. Counters, heap figures and GC verdicts stay each child's own under load.
+ * treated as timed. A scenario that depends on garbage collection (the GC-sensitive reading of
+ * `classifySampling`) also runs alone: whether a weak reference is collected in time can depend on
+ * the CPU the neighbours take. Counters and heap figures stay each child's own under load.
  */
-const concurrentKeys = entries => {
+const concurrentKeys = (entries, read = readScenario) => {
     const timedIds = new Set();
     for (const entry of entries) {
         const gates = Array.isArray(entry.gates) ? entry.gates : [];
-        if (gates.length === 0) timedIds.add(entry.id);
+        if (gates.length === 0 || typeof entry.scenario !== 'string'
+            || entry.nodeArgs?.some(arg => /expose-gc/.test(String(arg)))
+            || gcSensitive(resolve('perf/scenarios', entry.scenario + '.mjs'), read)) timedIds.add(entry.id);
         for (const gate of gates) {
             if (!gate || typeof gate.metric !== 'string' || gate.metric.endsWith('Ms')
                 || (typeof gate.over === 'string' && gate.over.endsWith('Ms'))) timedIds.add(entry.id);

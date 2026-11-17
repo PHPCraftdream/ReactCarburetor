@@ -129,13 +129,13 @@ impl Check<'_> {
         self.diagnostics.append(&mut watches.diagnostics);
     }
 
-    fn scan_function(&mut self, function: &Function<'_>, message: &'static str) {
+    fn scan_function(&mut self, function: &Function<'_>, message: &'static str, nested: bool) {
         if let Some(body) = &function.body {
             let mut watches = Watches {
                 source: self.source,
                 diagnostics: Vec::new(),
                 message,
-                nested: message != RENDER_MESSAGE,
+                nested,
             };
 
             watches.visit_function_body(body);
@@ -185,8 +185,9 @@ impl<'a> Visit<'a> for Check<'_> {
 impl Check<'_> {
     fn inspect_method(&mut self, method: &MethodDefinition<'_>) {
         match property_key_name(&method.key) {
-            Some("componentDidMount") => self.scan_function(&method.value, MESSAGE),
-            Some("render") => self.scan_function(&method.value, RENDER_MESSAGE),
+            Some("componentDidMount") => self.scan_function(&method.value, MESSAGE, true),
+            // A function nested in render is a handler: it runs later, not on every render.
+            Some("render") => self.scan_function(&method.value, RENDER_MESSAGE, false),
             _ => {}
         }
     }

@@ -243,10 +243,12 @@ fn looks_like_colour(value: &str) -> bool {
 }
 
 /// Whether a literal style value paints around the Roles. `background` is a shorthand, so only a
-/// value that is a colour on its own counts there.
+/// value that is a colour on its own counts there; a paint server (`fill: url(#gradient)`) is not a
+/// colour anywhere.
 fn paints_around_roles(property: &str, value: &str) -> bool {
     let value = value.trim();
-    if is_role_value(value) || NO_COLOUR.contains(&value.to_ascii_lowercase().as_str()) {
+    let lower = value.to_ascii_lowercase();
+    if is_role_value(value) || NO_COLOUR.contains(&lower.as_str()) || lower.starts_with("url(") {
         return false;
     }
     property != "background" || looks_like_colour(value)

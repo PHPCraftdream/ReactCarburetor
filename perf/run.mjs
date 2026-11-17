@@ -256,7 +256,11 @@ for (const entry of order) {
     concurrentJobs.set(key, {key, scenario: join(here, 'scenarios', entry.scenario + '.mjs'), args: entry.args ?? [],
         roots, runs: sampleDemands.get(key) ?? runs, nodeArgs: entry.nodeArgs ?? []});
 }
-for (const [key, samples] of await sampleConcurrently([...concurrentJobs.values()])) samplesByKey.set(key, samples);
+// A concurrent measurement's cost is the summed time of its children, charged to the entry that owns it.
+const concurrentMs = new Map();
+for (const [key, samples] of await sampleConcurrently([...concurrentJobs.values()], undefined, concurrentMs)) {
+    samplesByKey.set(key, samples);
+}
 
 const measurementOwners = new Map();
 const summaries = new Map();
@@ -352,7 +356,9 @@ for (const row of report) {
         sharedKey: key,
         cached: Boolean(entry.measurementOwner),
         ...(entry.measurementOwner ? {sharedMeasurement: entry.measurementOwner} : {}),
+        ...(concurrentMs.has(key) ? {concurrent: true} : {}),
     };
+    if (!entry.measurementOwner && concurrentMs.has(key)) row.elapsedMs = (row.elapsedMs ?? 0) + concurrentMs.get(key);
 }
 if (json) writeFileSync(json, JSON.stringify(report, null, 2));
 const sources = hidden.size === 0 ? '' : ` (+${hidden.size} scale source${hidden.size === 1 ? '' : 's'} measured)`;

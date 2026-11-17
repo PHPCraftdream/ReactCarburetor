@@ -120,9 +120,18 @@ describe('concurrent sampling', () => {
             {id: 'scaled', scenario: 'f', args: [8], gates: [{metric: 'found', equals: 8},
                 {metric: 'lintMs', scale: {from: 'source'}, max: 12}]},
             {id: 'ungated', scenario: 'g', gates: []},
+            {id: 'gcFlag', scenario: 'h', nodeArgs: ['--expose-gc'], gates: [{metric: 'hits', equals: 1}]},
         ];
 
-        expect([...concurrentKeys(entries)].sort((a, b) => a.localeCompare(b))).toEqual(['["a",[],[]]', '["b",[],[]]', '["e",[],[]]']);
+        expect([...concurrentKeys(entries, clean)].sort((a, b) => a.localeCompare(b)))
+            .toEqual(['["a",[],[]]', '["b",[],[]]', '["e",[],[]]']);
+    });
+    it('keeps a scenario that depends on garbage collection serial', () => {
+        const entries = [{id: 'weak', scenario: 'w', gates: [{metric: 'collected', equals: true}]},
+            {id: 'plain', scenario: 'p', gates: [{metric: 'hits', equals: 1}]}];
+        const read = (path: string): string => (path.endsWith('w.mjs') ? 'new WeakRef(x)' : '');
+
+        expect([...concurrentKeys(entries, read)]).toEqual(['["p",[],[]]']);
     });
     it('keeps every lint-binary scaling entry serial', async () => {
         const entries = [...await manifest('lintBinary.mjs'), ...await manifest('lintClasses.mjs')];

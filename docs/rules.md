@@ -404,9 +404,8 @@ their existing behavior.
   counting; JSX in attributes and expression children continues the owning element's depth.
 
 Native configuration rejects an unknown option key, a non-integer or a value below 1 as
-malformed configuration and exits with code 2. The option is honored by the native CLI's
-configuration; the ESLint/oxlint bridge runs the binary with a neutral configuration, so the
-default depth of 3 applies there.
+malformed configuration and exits with code 2. The plugin forwards the host rule's `max`, so the
+limit is the same through oxlint or ESLint as in the native CLI's configuration.
 
 ### `max-render-lines`: `max`
 

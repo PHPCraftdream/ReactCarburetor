@@ -68,10 +68,11 @@ export const benchJobs = () => {
  *
  * @param jobs - [{key, scenario, args, roots, runs, nodeArgs}]
  * @param concurrency - children running at once
+ * @param elapsed - filled with key -> the summed run time of the key's children, in ms
  * @returns Map key -> (Map root name -> metrics array, as {@link sampleScenario} returns), or the
  *     first error one of the key's children ended with
  */
-export const sampleConcurrently = async (jobs, concurrency = benchJobs()) => {
+export const sampleConcurrently = async (jobs, concurrency = benchJobs(), elapsed = new Map()) => {
     const results = new Map();
     const tasks = [];
     for (const job of jobs) {
@@ -84,11 +85,13 @@ export const sampleConcurrently = async (jobs, concurrency = benchJobs()) => {
         while (next < tasks.length) {
             const {job, root, run, samples} = tasks[next++];
             if (results.get(job.key) instanceof Error) continue;
+            const started = Date.now();
             try {
                 samples.get(root.name)[run] = await runOnceAsync(job.scenario, job.args, root.dir, job.nodeArgs);
             } catch (error) {
                 results.set(job.key, error);
             }
+            elapsed.set(job.key, (elapsed.get(job.key) ?? 0) + Date.now() - started);
         }
     };
     await Promise.all(Array.from({length: Math.min(concurrency, tasks.length)}, worker));

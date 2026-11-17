@@ -66,8 +66,9 @@ jobs:
         run: cargo build --release --locked --jobs 2
 
       # bench-scale-tool runs each workload the count pinned in native/bench-iters.txt; a workload
-      # missing from it is calibrated on the spot and the file is uploaded below. Informational.
-      - name: Native linter benchmarks (fixed iterations, informational)
+      # missing from it is calibrated on the spot and the file is uploaded below. The timings are
+      # informational; the step fails only when a generated corpus is not analysed as expected.
+      - name: Native linter benchmarks (timings informational)
         working-directory: native
         env:
           BENCH_SCALE: '1'

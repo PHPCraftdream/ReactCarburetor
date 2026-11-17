@@ -9,7 +9,7 @@
 //! lines holding only comments do not count. Every `render` method of a class that extends
 //! something is checked; function components are not, since a component here is a class.
 
-use oxc_ast::ast::{Class, ClassElement, MethodDefinition, Program};
+use oxc_ast::ast::{Class, ClassElement, MethodDefinition, MethodDefinitionKind, Program};
 use oxc_ast_visit::{walk, Visit};
 use oxc_span::{GetSpan, Span};
 
@@ -63,7 +63,11 @@ impl Check<'_> {
     }
 
     fn method(&mut self, method: &MethodDefinition<'_>) {
-        if property_key_name(&method.key) != Some("render") {
+        // A getter, a setter or a static `render` is not the component's render.
+        if property_key_name(&method.key) != Some("render")
+            || method.kind != MethodDefinitionKind::Method
+            || method.r#static
+        {
             return;
         }
         let Some(body) = &method.value.body else {
@@ -188,6 +192,8 @@ mod tests {
 
         assert!(diagnose(&plain, check).is_empty());
         assert!(diagnose(&other, check).is_empty());
+        assert!(diagnose(&long.replace("render()", "static render()"), check).is_empty());
+        assert!(diagnose(&long.replace("render()", "get render()"), check).is_empty());
     }
 
     #[test]
