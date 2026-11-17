@@ -1,6 +1,6 @@
 # Functional CSS classes
 
-An opt-in methodology for Tailwind v4 projects, enforced by ten native lint rules. Markup carries
+An opt-in methodology for Tailwind v4 projects, enforced by eleven native lint rules. Markup carries
 one class per element, and that class names what the element does: `submit-button`, `user-card`,
 `order-status`. Everything visual is composed below it in floors, and each floor may use only the
 floor directly under it. The rules check every floor in one pass and keep Tailwind utilities and
@@ -176,7 +176,8 @@ characters. The section is validated when the config loads: two kinds owning one
 pattern that reaches a colour property, a delivery slot missing from `slots`, a family named
 `surface` and an empty list are all configuration errors (exit code 2).
 
-With the section, all ten rules report at `error`; each can be tuned under `rules` like any other.
+With the section, the rules report at `error`, except `no-unused-class`, which is for pruning and
+stays off until switched on; each can be tuned under `rules` like any other.
 Without it they are off, and switching one on in `rules` is a configuration error, since it would
 have nothing to check against.
 
@@ -190,6 +191,7 @@ have nothing to check against.
 | [`valid-function-class`](rules.md#functional-classes) | place, name, selector, exactly one Tone, state blocks, no Bricks or declarations |
 | [`no-unknown-class-reference`](rules.md#functional-classes) | every `@apply` class is a Tailwind utility or a defined class |
 | [`no-duplicate-class`](rules.md#functional-classes) | one definition per name across the stylesheets |
+| [`no-unused-class`](rules.md#functional-classes) | Palette tokens, Roles, Tones, Traits and Patterns nothing uses (off by default) |
 | [`no-conflicting-classes`](rules.md#functional-classes) | no two classes of one `@apply` set the same property under the same variants |
 | [`require-function-class`](rules.md#functional-classes) | markup carries one literal Function |
 

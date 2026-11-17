@@ -174,6 +174,12 @@ pub fn generate(classes: &ClassesConfig) -> (String, Counts) {
             }
         }
     }
+    // The dark theme exists only where a `[data-theme]` selector may override Roles; without it,
+    // its palette steps would be tokens nothing reads.
+    let themed = classes
+        .theme_selectors
+        .iter()
+        .any(|selector| selector == "[data-theme]");
     let mut dark = String::new();
     for level in &classes.surface_levels {
         let (light, night) = surface_steps(level);
@@ -182,12 +188,15 @@ pub fn generate(classes: &ClassesConfig) -> (String, Counts) {
             palette.take("gray", light)
         );
         role_names.push(format!("surface-{level}"));
+        if !themed {
+            continue;
+        }
         dark += &format!(
             "  --color-surface-{level}: {};\n",
             palette.take("gray", Some(night))
         );
     }
-    if neutral {
+    if neutral && themed {
         for (slot, night) in [("ink", 100), ("ink-subtle", 300), ("edge", 700)] {
             if has(&classes.slots, slot) {
                 dark += &format!(
@@ -315,10 +324,6 @@ pub fn generate(classes: &ClassesConfig) -> (String, Counts) {
     }
 
     counts.palette = palette.len();
-    let themed = classes
-        .theme_selectors
-        .iter()
-        .any(|selector| selector == "[data-theme]");
     let dark_block = if themed && !dark.is_empty() {
         format!(
             "\n/* Themes override Roles, never Tones: dark surfaces and neutral ink. */\n[data-theme=\"dark\"] {{\n{dark}}}\n"

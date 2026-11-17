@@ -13,7 +13,7 @@ use crate::rules::classes::css::settings::{parse_classes, ClassesConfig};
 
 /// The rules that check the functional-class methodology. They need the `classes` section to know
 /// which CSS to read, so they stay off without it and default to `error` with it.
-pub const CLASS_RULES: [&str; 10] = [
+pub const CLASS_RULES: [&str; 11] = [
     "valid-palette-token",
     "valid-color-role",
     "valid-tone-class",
@@ -24,6 +24,7 @@ pub const CLASS_RULES: [&str; 10] = [
     "no-duplicate-class",
     "require-function-class",
     "no-conflicting-classes",
+    "no-unused-class",
 ];
 
 /// The error for a class rule switched on without the section it checks against.
@@ -109,10 +110,11 @@ impl Config {
     }
 
     /// The default severity of a class rule: `error` with a `classes` section, `off` without.
-    /// `None` for every other rule.
+    /// `no-unused-class` stays `off` either way: it is for pruning, and a design system defines
+    /// building blocks before anything applies them. `None` for every other rule.
     pub(super) fn class_rule_default(&self, name: &str) -> Option<Severity> {
         CLASS_RULES.contains(&name).then(|| {
-            if self.classes.is_some() {
+            if self.classes.is_some() && name != "no-unused-class" {
                 Severity::Error
             } else {
                 Severity::Off

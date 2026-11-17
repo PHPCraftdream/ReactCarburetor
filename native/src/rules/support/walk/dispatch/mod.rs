@@ -209,11 +209,7 @@ pub(super) fn run(
                     style::prefer_readonly_array_param::check(program, source, &bases)
                 }
                 classes::require_function_class::RULE => {
-                    classes::require_function_class::check_with_index(
-                        program,
-                        source,
-                        config.class_index(),
-                    )
+                    classes::require_function_class::check_with_config(program, source, config)
                 }
                 _ => check(program, source, &bases),
             });

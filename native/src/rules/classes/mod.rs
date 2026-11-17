@@ -47,7 +47,7 @@ impl CssContext<'_> {
 type CssCheck = fn(&CssContext<'_>) -> Vec<Diagnostic>;
 
 /// Every CSS rule, by the id it reports under.
-pub const CSS_REGISTRY: [(&str, CssCheck); 9] = [
+pub const CSS_REGISTRY: [(&str, CssCheck); 10] = [
     (
         colour::valid_palette_token::RULE,
         colour::valid_palette_token::check,
@@ -83,6 +83,10 @@ pub const CSS_REGISTRY: [(&str, CssCheck); 9] = [
     (
         component::no_conflicting_classes::RULE,
         component::no_conflicting_classes::check,
+    ),
+    (
+        reference::no_unused_class::RULE,
+        reference::no_unused_class::check,
     ),
 ];
 

@@ -2,10 +2,13 @@
 //! with its floor and where it is defined. Built once per run before any file is checked, then
 //! shared read-only by every rule.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
+use super::bricks::{classify, split, Colour};
 use super::parse::Node;
 use super::scan::{attribute_requirement, BlockKind, Floor, Scan};
+
+pub mod usage;
 use crate::rules::LineTable;
 
 /// Where a name is defined: the file relative to the config root, and the 1-based line.
@@ -42,6 +45,10 @@ pub struct FileDefinitions {
     pub color_reset: bool,
     /// State blocks: the Function, the attribute's name and the value it requires (`None`: any).
     pub states: Vec<(String, String, Option<String>)>,
+    /// Every class an `@apply` of the file names, as written (see [`usage::usages`]).
+    pub applied: Vec<String>,
+    /// Every custom property the file reads through `var(--…)`, without the `--`.
+    pub vars: Vec<String>,
 }
 
 /// The index itself. Every list of locations is in file order, then source order, so "the first
@@ -55,6 +62,14 @@ pub struct ClassIndex {
     /// Function → attribute → the values its state blocks select, or `None` once any block of that
     /// attribute matches values it cannot list.
     states: HashMap<String, HashMap<String, Option<Vec<String>>>>,
+    /// Every class any stylesheet applies, as written; resolved by [`ClassIndex::finish`].
+    applied: HashSet<String>,
+    /// The bare utilities of `applied`: the classes something uses.
+    used_classes: HashSet<String>,
+    /// Custom properties read anywhere, without the `--`.
+    used_vars: HashSet<String>,
+    /// Roles a colour Brick of any `@apply` paints with.
+    used_roles: HashSet<String>,
     color_reset: bool,
 }
 
@@ -62,6 +77,8 @@ impl ClassIndex {
     /// Adds one file's definitions; files must be added in their sorted order.
     pub fn add(&mut self, file: FileDefinitions) {
         self.color_reset |= file.color_reset;
+        self.applied.extend(file.applied);
+        self.used_vars.extend(file.vars);
 
         for (function, attribute, value) in file.states {
             let values = self
@@ -112,6 +129,36 @@ impl ClassIndex {
             .get(class)
             .and_then(|definitions| definitions.first())
             .map(|(floor, _)| *floor)
+    }
+
+    /// Resolves what is used, once every file is added: a colour Brick names a Role only once all
+    /// Roles are known.
+    pub fn finish(&mut self) {
+        let roles: HashSet<String> = self.roles.keys().cloned().collect();
+        for class in &self.applied {
+            let utility = split(class).utility;
+            self.used_classes.insert(utility.to_string());
+            if let Some(Colour::Role(role)) =
+                classify(utility, &|name| roles.contains(name)).and_then(|brick| brick.colour)
+            {
+                self.used_roles.insert(role.to_string());
+            }
+        }
+    }
+
+    /// Whether some `@apply` names the class.
+    pub fn is_class_used(&self, class: &str) -> bool {
+        self.used_classes.contains(class)
+    }
+
+    /// Whether some value reads `--palette-<token>`.
+    pub fn is_palette_used(&self, token: &str) -> bool {
+        self.used_vars.contains(&format!("palette-{token}"))
+    }
+
+    /// Whether some colour Brick paints with the Role, or some value reads `--color-<role>`.
+    pub fn is_role_used(&self, role: &str) -> bool {
+        self.used_roles.contains(role) || self.used_vars.contains(&format!("color-{role}"))
     }
 
     /// The values a Function's state blocks select for an attribute, when they can all be listed;

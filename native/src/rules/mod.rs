@@ -346,9 +346,7 @@ pub(super) fn rule_possible(rule: &str, text: &str, bases: &Bases) -> bool {
     match rule {
         setup::no_unrecognized_base::RULE => text.contains("import") && text.contains("extends"),
         effects::no_inline_store_effect::RULE => text.contains("useStoreEffect"),
-        classes::require_function_class::RULE => {
-            text.contains("className") || text.contains("ClassName")
-        }
+        classes::require_function_class::RULE => text.contains("lassName"),
         effects::prefer_store_effect::RULE => {
             text.contains("watch") || text.contains("storeEffect")
         }
@@ -562,11 +560,7 @@ pub(super) fn run_sequential(
                     style::prefer_readonly_array_param::check(program, source, &bases)
                 }
                 classes::require_function_class::RULE => {
-                    classes::require_function_class::check_with_index(
-                        program,
-                        source,
-                        config.class_index(),
-                    )
+                    classes::require_function_class::check_with_config(program, source, config)
                 }
                 _ => check(program, source, &bases),
             },

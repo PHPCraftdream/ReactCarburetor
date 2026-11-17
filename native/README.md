@@ -126,7 +126,7 @@ A warning alone does not fail the run, the line oxlint draws too; `--deny-warnin
 
 **Stylesheets.** With a `classes` section in the config, the binary also reads the stylesheets its
 `css` globs name: all of them once, in parallel, before any file is checked, into an index of the
-classes they define. The walk then checks each matching `.css` file with the nine stylesheet rules,
+classes they define. The walk then checks each matching `.css` file with the ten stylesheet rules,
 and `require-function-class` checks every `className` against the index. `--stdin` takes a
 stylesheet buffer as well as a component one. A `root` key moves the directory those globs (and
 `ignore` and `overrides`) resolve against; the plugin bridge sets it, because its generated config

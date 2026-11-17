@@ -67,3 +67,18 @@ fn the_scaffold_is_deterministic() {
 
     assert_eq!(scaffold(config).0, scaffold(config).0);
 }
+
+#[test]
+fn every_palette_token_and_role_the_scaffold_writes_is_used() {
+    let on = r#"{"classes": {"css": ["**/*.css"], "themeSelectors": [":root"]}, "rules": {"carburetor/no-unused-class": "warn"}}"#;
+    let (text, _) = scaffold(on);
+
+    let findings = every_rule(on, &[("styles/classes.css", &text)], "styles/classes.css");
+    // Tones, Traits and Patterns are a library for the app to apply; tokens and Roles are not.
+    assert!(
+        findings
+            .iter()
+            .all(|(_, _, message)| !message.contains("--palette-") && !message.contains("--color-")),
+        "{findings:?}"
+    );
+}

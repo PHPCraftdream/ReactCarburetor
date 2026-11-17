@@ -54,6 +54,7 @@ import {noUnknownClassReference} from "./Rules/Classes/Reference/noUnknownClassR
 import {noDuplicateClass} from "./Rules/Classes/Reference/noDuplicateClass.mts";
 import {requireFunctionClass} from "./Rules/Classes/requireFunctionClass.mts";
 import {noConflictingClasses} from "./Rules/Classes/Component/noConflictingClasses.mts";
+import {noUnusedClass} from "./Rules/Classes/Reference/noUnusedClass.mts";
 
 /**
  * The lint plugin for consumers of React Carburetor.
@@ -118,6 +119,7 @@ const plugin: IPlugin = {
         'no-duplicate-class': noDuplicateClass,
         'require-function-class': requireFunctionClass,
         'no-conflicting-classes': noConflictingClasses,
+        'no-unused-class': noUnusedClass,
         'require-subscription-disposal': requireSubscriptionDisposal,
         'require-super-in-lifecycle': requireSuperInLifecycle,
     },

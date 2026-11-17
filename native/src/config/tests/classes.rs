@@ -34,6 +34,8 @@ fn with_the_section_every_class_rule_defaults_to_error_and_can_be_tuned() {
     .unwrap();
 
     assert_eq!(config.severity("valid-tone-class"), Severity::Error);
+    // Pruning is opt-in even with the section.
+    assert_eq!(config.severity("no-unused-class"), Severity::Off);
     assert_eq!(
         config.severity("carburetor/require-function-class"),
         Severity::Error

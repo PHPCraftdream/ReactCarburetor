@@ -98,7 +98,7 @@ fn code(output: &Output) -> i32 {
 
 /// The rules under test; the project's TSX is also checked by every recommended rule, which is not
 /// what these tests are about.
-const CLASS_RULES: [&str; 10] = [
+const CLASS_RULES: [&str; 11] = [
     "carburetor/valid-palette-token",
     "carburetor/valid-color-role",
     "carburetor/valid-tone-class",
@@ -109,6 +109,7 @@ const CLASS_RULES: [&str; 10] = [
     "carburetor/no-duplicate-class",
     "carburetor/require-function-class",
     "carburetor/no-conflicting-classes",
+    "carburetor/no-unused-class",
 ];
 
 /// `(file, line, rule)` of a `--format=json` run's class-rule findings, in report order.

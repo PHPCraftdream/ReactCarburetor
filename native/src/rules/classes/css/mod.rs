@@ -163,7 +163,8 @@ impl Project {
                     .unwrap_or_else(|| path.to_string_lossy().replace('\\', "/"));
                 let sheet = parse::parse(&text);
                 let placed = scan::scan(&sheet, &text, classes);
-                let defined = definitions(&placed, &text, &relative);
+                let mut defined = definitions(&placed, &text, &relative);
+                index::usage::usages(&sheet.nodes, &text, &mut defined.applied, &mut defined.vars);
 
                 (
                     CssFile {
@@ -183,6 +184,7 @@ impl Project {
             index.add(defined);
             files.push(file);
         }
+        index.finish();
         let by_path = files
             .iter()
             .enumerate()

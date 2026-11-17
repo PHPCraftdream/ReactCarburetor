@@ -1681,10 +1681,10 @@ projections.
 The engine trades one class of mistake for another. Nothing here forces a re-render you did not ask
 for — and nothing tells you when a write reaches no subscriber, when a component reads state it never
 subscribed to, or when an effect's cleanup is silently dropped. The plugin and native registries each
-contain 52 rules: 31 catalogue rules, `require-hoisted-constant`, three `useStoreEffect` rules
+contain 53 rules: 31 catalogue rules, `require-hoisted-constant`, three `useStoreEffect` rules
 (`no-store-read-in-effect-deps`, `no-inline-store-effect`, `prefer-store-effect`), the
 `no-unrecognized-base` setup check, the optional `no-react-hooks-in-components` policy, five
-house-style rules, and ten opt-in rules for [functional CSS classes](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/functional-classes.md)
+house-style rules, and eleven opt-in rules for [functional CSS classes](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/functional-classes.md)
 in Tailwind v4 projects.
 
 ### Functional CSS classes
@@ -1703,7 +1703,7 @@ the `--color-*: initial` reset, a Tone per family and delivery plus the surface 
 every kind (`shape-control`, `type-label`, `layout-row`, `focus-ring`, …), Patterns over them
 (`pattern-button`, `pattern-field`, `pattern-card`, `pattern-badge`), a dark theme over the Roles, and
 a few example Functions to replace with your own. Without a `.carburetorrc.json` it creates one
-whose `classes` section names the new stylesheet, which turns the ten class rules on; an existing
+whose `classes` section names the new stylesheet, which turns the class rules on; an existing
 config is never edited (the command prints the section to add), an existing stylesheet is never
 overwritten, and a configured vocabulary (families, slots, deliveries, trait kinds) shapes what is
 generated. Import the file from your Tailwind entry (`@import "./classes.css";`) and lint as usual.

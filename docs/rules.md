@@ -5,12 +5,12 @@ name; [hazards.md](hazards.md) is the same material organised by mistake, with t
 triggers each one, why it is silent at runtime, and where the rule can be wrong.
 
 The recommended rules protect carburetor logic and allocation hygiene. The separately enabled
-`no-hooks` preset adds a component-architecture policy. The plugin registry contains **52 rules**:
+`no-hooks` preset adds a component-architecture policy. The plugin registry contains **53 rules**:
 31 catalogue rules, `require-hoisted-constant`, three `useStoreEffect` rules (`no-store-read-in-effect-deps`,
 `no-inline-store-effect`, `prefer-store-effect`), the `no-unrecognized-base` setup check, the
-optional `no-react-hooks-in-components` policy, five house-style rules, and ten opt-in
-[functional-class rules](#functional-classes). The native registries also have 52 entries: 43 over
-TypeScript and nine over stylesheets. `no-module-level-store` and `one-export-per-file` are off in
+optional `no-react-hooks-in-components` policy, five house-style rules, and eleven opt-in
+[functional-class rules](#functional-classes). The native registries also have 53 entries: 43 over
+TypeScript and ten over stylesheets. `no-module-level-store` and `one-export-per-file` are off in
 recommended configuration; the functional-class rules are off until a `classes` section turns them on.
 
 ## Functional component reads
@@ -268,6 +268,7 @@ until your project changes shape.
 | `no-unknown-class-reference` | off¹ | An `@apply` class that is neither a Tailwind utility nor defined by the configured stylesheets, or a colour naming no Role | [Functional classes](#functional-classes) |
 | `no-duplicate-class` | off¹ | A second definition of a Palette token, Role, utility or Function | [Functional classes](#functional-classes) |
 | `no-conflicting-classes` | off¹ | Two classes of one `@apply` list that set the same property under the same variants (after expanding Functions, Patterns and Traits), so the order of `@apply` decides the value | [Functional classes](#functional-classes) |
+| `no-unused-class` | off | A Palette token no Role reads, a Role no colour Brick or `var()` uses, a Tone, Trait or Pattern no `@apply` names; off even with a `classes` section, for pruning | [Functional classes](#functional-classes) |
 | `require-function-class` | off¹ | A `className` (or `*ClassName` prop, literal spread object, `createElement`/`jsx` props object) that is not one Function written as a literal | [Functional classes](#functional-classes) |
 
 ¹ `error` once `.carburetorrc.json` has a `classes` section.
@@ -483,11 +484,12 @@ preset.
 
 ## Functional classes
 
-Ten rules enforce the [functional CSS class methodology](functional-classes.md) in Tailwind v4
+Eleven rules enforce the [functional CSS class methodology](functional-classes.md) in Tailwind v4
 projects: markup carries one class that names what an element does, and colours and components are
 composed below it in floors that may each use only the floor under them. They are off until
 `.carburetorrc.json` has a `classes` section naming the stylesheets (`{"classes": {"css":
-["src/**/*.css"]}}`); with it, all ten report at `error`. Nine check the stylesheets and run only
+["src/**/*.css"]}}`); with it, all but `no-unused-class` report at `error` (that one is for pruning and stays off until switched on).
+Ten check the stylesheets and run only
 in the `carburetor-lint` CLI, because neither oxlint nor ESLint lints CSS; `require-function-class`
 checks markup and also reports through the plugin. The methodology page lists what each rule
 checks, the configuration keys and their defaults, and the limits.

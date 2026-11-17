@@ -33,6 +33,15 @@ pub fn check(_program: &Program<'_>, _source: &Source<'_>, _bases: &Bases) -> Ve
     Vec::new()
 }
 
+/// [`check_with_index`] with the index the run handed the config, as both dispatch paths call it.
+pub fn check_with_config(
+    program: &Program<'_>,
+    source: &Source<'_>,
+    config: &crate::config::Config,
+) -> Vec<Diagnostic> {
+    check_with_index(program, source, config.class_index())
+}
+
 /// Checks every `className` in a file against the class index.
 pub fn check_with_index(
     program: &Program<'_>,
