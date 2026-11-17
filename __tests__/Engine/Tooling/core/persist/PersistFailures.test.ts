@@ -1,4 +1,4 @@
-import {Carburetor, IStorageLike, persist} from '@/Carburetor';
+import {Carburetor, IStorageLike, diagnostics, persist} from '@/Carburetor';
 
 describe('persist storage failures', () => {
     test.each([false, true])('failed reads preserve unread data and report errors (coalesce=%s)', async coalesce => {
@@ -180,5 +180,55 @@ describe('persist storage failures', () => {
         expect(reported).toHaveLength(1);
         expect(reported[0]).toContain('slot');
         expect(reported[0]).toContain('state model rejected the entry');
+    });
+});
+
+describe('persist write failures without onError', () => {
+    const quota = new Error('quota exceeded');
+    const failing = (): IStorageLike => ({
+        getItem: () => null,
+        setItem: () => { throw quota; },
+        removeItem: () => undefined,
+    });
+
+    afterEach(() => diagnostics.setFailureHandler(undefined));
+
+    test.each([
+        ['coalesced', {}],
+        ['synchronous', {coalesce: false}],
+        ['partitioned', {partitions: ['a']}],
+    ] as const)('reach the failure handler as persist (%s)', (_name, extra) => {
+        const seen: Array<[unknown, string]> = [];
+        diagnostics.setFailureHandler((error, source) => seen.push([error, source]));
+        const store = new Carburetor({a: {n: 0}});
+        const stop = persist(store, {key: 'k', storage: failing(), ...extra});
+
+        store.setData({a: {n: 1}});
+        stop.flush();
+        expect(seen).toEqual([[quota, 'persist']]);
+        stop();
+    });
+
+    test('with onError the handler is not called', () => {
+        const seen: unknown[] = [];
+        const errors: unknown[] = [];
+        diagnostics.setFailureHandler((error) => seen.push(error));
+        const store = new Carburetor({n: 0});
+        const stop = persist(store, {key: 'k', storage: failing(), onError: (error) => errors.push(error)});
+
+        store.setData({n: 1});
+        stop.flush();
+        expect(errors).toEqual([quota]);
+        expect(seen).toEqual([]);
+        stop();
+    });
+
+    test('without a handler a failed write stays silent and does not throw', () => {
+        const store = new Carburetor({n: 0});
+        const stop = persist(store, {key: 'k', storage: failing()});
+
+        store.setData({n: 1});
+        expect(() => stop.flush()).not.toThrow();
+        stop();
     });
 });

@@ -12,8 +12,9 @@ provider and child boundary are only in the main entry). Source links are reposi
 receives, in every build and with the error as it was thrown, each failure the engine isolates instead
 of rethrowing: a subscriber, event listener, transaction delivery, deferred computation, throttled
 updater, computed subscriber or effect cleanup that threw. `source` is `delivery`, `transaction`,
-`settlement`, `update`, `computed` or `teardown`. Without a handler development reports text and
-production reports nothing. A handler that throws is ignored; one handler is kept, a new one replaces
+`settlement`, `update`, `computed` or `teardown`, and `persist` for a storage write `persist` could not make
+and had no `onError` for. Without a handler development reports text and production reports nothing
+(a `persist` write failure without `onError` is not reported at all). A handler that throws is ignored; one handler is kept, a new one replaces
 it, and `undefined` removes it. A transaction delivery or deferred-computation cascade that keeps
 going is cut after 1000 rounds and reported here (`transaction` or `settlement`) as an `Error`.
 

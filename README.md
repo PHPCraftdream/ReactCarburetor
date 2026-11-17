@@ -914,7 +914,8 @@ subscriber or effect cleanup that throws does not stop the delivery behind it, s
 the error instead of rethrowing it. By default that error is reported in development only, as text, and
 a production build drops it. `diagnostics.setFailureHandler((error, source) => { ... })` receives the
 original error in every build, with `source` naming where it was isolated (`delivery`, `transaction`,
-`settlement`, `update`, `computed` or `teardown`); forward it to your monitoring. A handler that throws is
+`settlement`, `update`, `computed`, `teardown`, or `persist` for a failed storage write with no `onError`);
+forward it to your monitoring. A handler that throws is
 ignored, and `setFailureHandler(undefined)` removes it. A cascade that keeps writing stores, or keeps
 deferring computations, is cut after 1000 rounds and reported the same way instead of hanging.
 

@@ -1,3 +1,4 @@
+import {diagnostics} from "../../Store/Diagnostics/DiagnosticsInstance";
 import {ICarburetor} from "../../Models/Store";
 import {IPersistDisposer, IStorageLike, IPersistOptions} from "../../Models/Tooling";
 import {storeLifecycle} from "../../Store/Diagnostics/Internal/StoreLifecycle";
@@ -150,6 +151,9 @@ export const persistPartitions = <T extends object>(
         } catch (error: unknown) {
             if (onError) {
                 onError(error);
+            } else {
+                // Without a handler the failure still reaches setFailureHandler, in every build.
+                diagnostics.reportFailure(error, 'persist');
             }
             return;
         }
@@ -177,6 +181,9 @@ export const persistPartitions = <T extends object>(
             failed.add(branch);
             if (onError) {
                 onError(error);
+            } else {
+                // Without a handler the failure still reaches setFailureHandler, in every build.
+                diagnostics.reportFailure(error, 'persist');
             }
         }
     };

@@ -35,8 +35,12 @@ export class Diagnostics {
      * that throws is ignored: it cannot break the delivery it observes. One handler is kept; setting
      * another replaces it, and `undefined` removes it.
      *
+     * A storage write `persist` could not make, when the caller gave it no `onError`, comes here
+     * too, as `persist`; without a handler it stays silent, as it always was.
+     *
      * @param handler - called with the thrown value and where it was isolated (`delivery`,
-     * `transaction`, `settlement`, `update`, `computed` or `teardown`); `undefined` removes it.
+     * `transaction`, `settlement`, `update`, `computed`, `teardown` or `persist`); `undefined`
+     * removes it.
      */
     public setFailureHandler(handler: ((error: unknown, source: string) => void) | undefined): void {
         if (handler !== undefined && typeof handler !== 'function') {

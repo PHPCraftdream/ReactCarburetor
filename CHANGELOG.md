@@ -32,6 +32,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   like a store's `watch(select, onChange)`; before, a computed offered only `subscribe(callback)` with an id to
   unsubscribe and a callback that received no value.
 
+- A storage write `persist` cannot make (a full quota, a value that does not serialize), when no `onError` was given,
+  reaches `diagnostics.setFailureHandler` with the source `persist`; before, it was dropped in every build. Without a
+  handler nothing changes.
 - `persist()` returns an `IPersistDisposer`: still a `TDisposer`, plus `flush()`, which writes now whatever storage
   is behind (a `throttleMs` window, a coalescing microtask, a notification a deferring scheduler has not delivered)
   and keeps mirroring, the window restarting from that write. It ignores `this` and its arguments, so it can be a
