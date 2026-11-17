@@ -272,7 +272,9 @@ export const HookStatus = () => {
 - **Async resources:** `ResourceCarburetor` (one slot) and `ResourceCache` (many entries;
   `ttl: 30_000` / `maxEntries: 100` defaults) — see [Async resources](#async-resources) and
   [docs/promise-cache.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/promise-cache.md).
-- **Lint:** 26 core rules plus the optional `no-react-hooks-in-components` — see
+- **Lint:** 54 native rules — the hazard catalogue, allocation and component-shape checks,
+  house style, the optional `no-react-hooks-in-components`, and opt-in rules for
+  [functional CSS classes](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/functional-classes.md) — see
   [Lint rules](#lint-rules) and
   [docs/rules.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/rules.md).
 

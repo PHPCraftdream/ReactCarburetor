@@ -23,7 +23,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `error` with it. `require-function-class` also reads `*ClassName` props, literal objects spread into an element and
   the props of `createElement`/`jsx` calls, checks a literal `data-*`/`aria-*` value against the values the
   Function's state blocks select (where they list two or more; `aria-*="false"` is never reported), and reports a
-  literal colour in a `style` object (keywords such as `none`, `currentColor` and `transparent` aside). The binary reads the stylesheets once, in parallel, into a class index before any
+  literal colour in a `style` object (keywords such as `none`, `currentColor` and `transparent`, and paint servers such as
+  `fill: url(#gradient)`, aside). The binary reads the stylesheets once, in parallel, into a class index before any
   file is checked; `--stdin` accepts a stylesheet buffer too. The plugin forwards the section, so
   `require-function-class` also reports through oxlint and ESLint once switched on in the host's
   config, and drops cached answers when a configured stylesheet changes. A stylesheet that does not

@@ -68,10 +68,12 @@ carburetor-lint [options] [paths...]
 | `--rule <name>=<severity>` | override one rule: `error`, `warn` or `off` |
 | `--format <human\|json>` | output format; default human |
 | `--deny-warnings` | fail the run on warnings too |
+| `--keep-overlaps` | keep `no-function-in-render` alongside the allocation rules that report the same function |
 | `--fix` | write every available fix to disk |
 | `--fix-dry-run` | print what `--fix` would change, without writing it |
 | `--stdin <path>` | lint standard input as this file instead of walking any path |
 | `--init-classes <path>` | write a stylesheet with every functional-class floor filled with base classes, and a config naming it when there is none; lints nothing |
+| `-V`, `--version` | print the version and the bridge protocol, then exit |
 | `-h`, `--help` | print the usage |
 
 Every valued flag takes both spellings, `--flag value` and `--flag=value`.

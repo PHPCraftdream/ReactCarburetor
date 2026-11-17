@@ -270,7 +270,7 @@ until your project changes shape.
 | `no-duplicate-class` | off¹ | A second definition of a Palette token, Role, utility or Function | [Functional classes](#functional-classes) |
 | `no-conflicting-classes` | off¹ | Two classes of one `@apply` list that set the same property under the same variants (after expanding Functions, Patterns and Traits), so the order of `@apply` decides the value | [Functional classes](#functional-classes) |
 | `no-unused-class` | off | A Palette token no Role reads, a Role no colour Brick or `var()` uses, a Tone, Trait or Pattern no `@apply` names; off even with a `classes` section, for pruning; reads only stylesheets, so a Role used only from markup counts as unused | [Functional classes](#functional-classes) |
-| `require-function-class` | off¹ | A `className` (or `*ClassName` prop, literal spread object, `createElement`/`jsx` props object) that is not one Function written as a literal; a literal `data-*`/`aria-*` value no state block of the Function selects, where the blocks list two or more values (`aria-*="false"` is never reported); a literal colour in a `style` object, keywords such as `none` and `currentColor` aside | [Functional classes](#functional-classes) |
+| `require-function-class` | off¹ | A `className` (or `*ClassName` prop, literal spread object, `createElement`/`jsx` props object) that is not one Function written as a literal; a literal `data-*`/`aria-*` value no state block of the Function selects, where the blocks list two or more values (`aria-*="false"` is never reported); a literal colour in a `style` object, keywords such as `none` and `currentColor` and `url(…)` paint servers aside | [Functional classes](#functional-classes) |
 
 ¹ `error` once `.carburetorrc.json` has a `classes` section.
 
@@ -344,7 +344,8 @@ oxlint's configuration.
 ```
 
 Most rules accept severity only: `error`, `warn` or `off`; `require-module-function` also accepts
-the `scope` option (`"all"` or `"classes"`) `max-render-depth` and `max-render-lines` accept `max` (an integer >= 1).
+the `scope` option (`"all"` or `"classes"`), `max-render-depth` and `max-render-lines` accept `max`
+(an integer >= 1), and the house-style rules take the options their sections below describe.
 Unknown option values, option keys and base-list
 shapes are malformed configuration. Suppress reports with
 `// carburetor-disable-next-line <rule>` or `// carburetor-disable <rule>`; either directive without

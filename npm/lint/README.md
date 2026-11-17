@@ -1,15 +1,18 @@
 # @react-carburetor/lint
 
-React Carburetor's native linter: 27 rules for state mistakes and avoidable allocations, run as one
-process over a directory tree instead of once per file through a linter's plugin bridge.
+React Carburetor's native linter: 54 rules for state mistakes, avoidable allocations, component
+shape and, opt-in, a functional CSS class methodology for Tailwind v4 stylesheets, run as one process
+over a directory tree instead of once per file through a linter's plugin bridge.
 
 ```bash
 npm install --save-dev @react-carburetor/lint
 
-npx carburetor-lint src                 # report
-npx carburetor-lint --fix src           # apply the fixes rules can make
-npx carburetor-lint --fix-dry-run src   # preview them
-npx carburetor-lint --format=json src   # machine-readable output
+npx carburetor-lint src                          # report
+npx carburetor-lint --fix src                    # apply the fixes rules can make
+npx carburetor-lint --fix-dry-run src            # preview them
+npx carburetor-lint --format=json src            # machine-readable output
+npx carburetor-lint --stdin src/App.tsx < buf    # an unsaved buffer, checked as that file
+npx carburetor-lint --init-classes src/styles/classes.css   # scaffold the functional-class floors
 ```
 
 The installing machine downloads exactly one compiled binary: this package lists one
@@ -50,17 +53,26 @@ next to `@react-carburetor/core` and the plugin finds it.
 
 | Kind | Recognised names |
 |------|------------------|
-| Store | `Carburetor`, `ResourceCarburetor` |
-| Component | `AntiHookComponent`, `ScopedAntiHookComponent` |
+| Store | `Carburetor`, `ResourceCarburetor`, plus `storeBases` |
+| Component | `AntiHookComponent`, `ScopedAntiHookComponent`, plus `componentBases` |
 | Render | `render` |
 
-Recognition is fixed and syntactic. Custom components should directly extend a recognised
-component base; recognition is not generally transitive. These names cannot be configured.
-Suppress an individual report with `// carburetor-disable-next-line <rule>` or a whole file with
-`// carburetor-disable <rule>`; either directive without a rule list silences all carburetor rules.
-Configuration accepts severity only: `error`, `warn` or `off`. Legacy `[severity, options]`
-payloads may remain stored in host configuration, but native rules do not consume options. See
-the repository's `native/README.md` for the full command and configuration reference.
+Recognition is syntactic. A project base class that extends a recognised one is listed under
+`componentBases` or `storeBases` in `.carburetorrc.json`; `no-unrecognized-base` points out one
+that is missing. Suppress an individual report with `// carburetor-disable-next-line <rule>` or a
+whole file with `// carburetor-disable <rule>`; either directive without a rule list silences all
+carburetor rules (in a stylesheet, the same directives as `/* … */` comments).
+
+**Configuration.** `.carburetorrc.json` holds `rules` (a severity, or `[severity, options]`),
+`ignore`, `overrides`, `componentBases`, `storeBases`, `classes` and `root`; an unknown key fails
+loudly. Six rules take options: `require-module-function` (`scope`), `max-render-depth` and
+`max-render-lines` (`max`), `max-line-length`, `no-parent-import` (`roots`) and `require-tsdoc`.
+The `classes` section names the stylesheets and switches on the functional-class rules, which check
+both the CSS and every `className`; see the repository's
+[functional classes guide](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/functional-classes.md).
+The repository's [`native/README.md`](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/native/README.md)
+is the full command and configuration reference, and
+[`docs/rules.md`](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/rules.md) lists every rule.
 
 **Exit codes.** `0` clean, `1` lint problems, `2` missing paths or launcher/linter failure. The
 launcher exits `2` if the native binary cannot start or terminates by signal; otherwise it

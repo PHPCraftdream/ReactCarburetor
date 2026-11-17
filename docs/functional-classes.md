@@ -93,8 +93,8 @@ attribute with one styled value is not checked, since its other values are the F
 inline `style` object (`style={{color: '#fff'}}`), in spread props or in `createElement` props paints
 around the Roles and is reported too; a value computed at run time, such as a colour the user picked,
 a `var(--color-…)` Role, a keyword that paints no colour of its own (`none`, `inherit`,
-`currentColor`, `transparent`) and a `background` that is not a colour on its own (`url(…)`, a
-gradient) are not.
+`currentColor`, `transparent`), a paint server (`fill: url(#gradient)`) and a `background` that is
+not a colour on its own (`url(…)`, a gradient) are not.
 
 ## A complete stylesheet
 
