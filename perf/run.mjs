@@ -15,14 +15,16 @@
 // line is that entry's FAIL (counted as a violation) and the remaining entries still run. The same
 // holds for a baseline build that lacks an API a scenario needs, so a whole --against sweep over
 // old builds still ends with a per-entry summary. Entries sharing (scenario, args, nodeArgs) are measured
-// once per build and share their samples.
+// once per build and share their samples. Scenarios no timed gate reads run first, BENCH_JOBS children at
+// a time (default: one fewer than the cores); the timed ones then run alone. --against runs everything
+// alone, since it compares every timing.
 import {appendFileSync, existsSync, readdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {baselineDist} from './harness/baseline.mjs';
 import {compare, evaluate} from './harness/evaluate.mjs';
 import sampling from './harness/sampling.mjs';
-import {sampleScenario, show, summarize} from './harness/measure.mjs';
+import {sampleConcurrently, sampleScenario, show, summarize} from './harness/measure.mjs';
 
 const {demandByKey, phaseBudget, elapsedRow, timingSummary, keyFor} = sampling;
 
@@ -243,6 +245,18 @@ const samplesFor = entry => {
     if (samples instanceof Error) throw samples;
     return samples;
 };
+
+// Children whose verdict does not depend on wall-clock time run side by side before the timed ones,
+// which then run alone. --against compares every `...Ms` metric, so there everything runs alone.
+const concurrent = against ? new Set() : sampling.concurrentKeys(order);
+const concurrentJobs = new Map();
+for (const entry of order) {
+    const key = keyFor(entry);
+    if (!concurrent.has(key) || concurrentJobs.has(key) || missingRequires(entry).length > 0) continue;
+    concurrentJobs.set(key, {key, scenario: join(here, 'scenarios', entry.scenario + '.mjs'), args: entry.args ?? [],
+        roots, runs: sampleDemands.get(key) ?? runs, nodeArgs: entry.nodeArgs ?? []});
+}
+for (const [key, samples] of await sampleConcurrently([...concurrentJobs.values()])) samplesByKey.set(key, samples);
 
 const measurementOwners = new Map();
 const summaries = new Map();

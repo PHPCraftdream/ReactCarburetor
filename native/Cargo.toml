@@ -26,6 +26,17 @@ globset = "=0.4.20"
 serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.145"
 
+# Fixed-iteration benchmarks of the binary (benches/lint.rs); never part of the shipped linter.
+[dev-dependencies]
+bench-scale-tool = "=0.1.0"
+
+[[bench]]
+name = "lint"
+harness = false
+
+# Its own workspace root, so bench-scale-tool keeps its pinned counts in native/bench-iters.txt.
+[workspace]
+
 [profile.release]
 # A linter is short-lived: optimise for the run, not for the build.
 opt-level = 3

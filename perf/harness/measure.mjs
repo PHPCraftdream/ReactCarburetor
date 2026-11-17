@@ -1,7 +1,8 @@
 /* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Runs one scenario on one or more builds, one child process per sample, builds interleaved.
 // A scenario is a module that reads its build from DIST_ROOT and ends with one `@@ {json}` line.
-import {spawnSync} from 'node:child_process';
+import {spawn, spawnSync} from 'node:child_process';
+import {availableParallelism} from 'node:os';
 import {resolve} from 'node:path';
 
 /** The first line mentioning an error (a thrown message), else the first non-empty lines, kept short. */
@@ -11,13 +12,11 @@ const brief = (text, limit = 240) => {
     return (cause || 'no output').length > limit ? cause.slice(0, limit - 3) + '...' : cause;
 };
 
-/** Runs a scenario once on one build and returns its metrics object. */
-export const runOnce = (scenario, args, distRoot, nodeArgs = []) => {
-    const child = spawnSync(process.execPath, ['--expose-gc', ...nodeArgs, resolve(scenario), ...args.map(String)], {
-        env: {...process.env, NODE_ENV: 'production', DIST_ROOT: resolve(distRoot)},
-        encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
-    });
-    if (child.error) throw child.error;
+const childArgs = (scenario, args, nodeArgs) => ['--expose-gc', ...nodeArgs, resolve(scenario), ...args.map(String)];
+const childEnv = distRoot => ({...process.env, NODE_ENV: 'production', DIST_ROOT: resolve(distRoot)});
+
+/** The metrics of a finished child, or the error that explains why there are none. */
+const metricsOf = child => {
     const line = child.stdout.split('\n').reverse().find(text => text.startsWith('@@ '));
     if (child.status !== 0 || !line) {
         // The full child output rides on error.output for the runner's verbose mode; the message stays one line.
@@ -27,6 +26,74 @@ export const runOnce = (scenario, args, distRoot, nodeArgs = []) => {
     }
 
     return JSON.parse(line.slice(3));
+};
+
+/** Runs a scenario once on one build and returns its metrics object. */
+export const runOnce = (scenario, args, distRoot, nodeArgs = []) => {
+    const child = spawnSync(process.execPath, childArgs(scenario, args, nodeArgs), {
+        env: childEnv(distRoot), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
+    });
+    if (child.error) throw child.error;
+
+    return metricsOf(child);
+};
+
+/** {@link runOnce} without blocking, so several children can run at once. */
+const runOnceAsync = (scenario, args, distRoot, nodeArgs = []) => new Promise((settle, reject) => {
+    const child = spawn(process.execPath, childArgs(scenario, args, nodeArgs), {env: childEnv(distRoot)});
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; });
+    child.stderr.setEncoding('utf8').on('data', chunk => { stderr += chunk; });
+    child.on('error', reject);
+    child.on('close', status => {
+        try {
+            settle(metricsOf({status, stdout, stderr}));
+        } catch (error) {
+            reject(error);
+        }
+    });
+});
+
+/** How many children run at once: `BENCH_JOBS`, else one fewer than the cores, at least one. */
+export const benchJobs = () => {
+    const jobs = Number(process.env.BENCH_JOBS);
+    return Number.isInteger(jobs) && jobs > 0 ? jobs : Math.max(1, availableParallelism() - 1);
+};
+
+/**
+ * Samples many scenarios at once, `concurrency` children at a time. Only for scenarios whose
+ * verdict does not depend on wall-clock time: a child's counters, heap and GC are its own, while
+ * its timings would feel the neighbours.
+ *
+ * @param jobs - [{key, scenario, args, roots, runs, nodeArgs}]
+ * @param concurrency - children running at once
+ * @returns Map key -> (Map root name -> metrics array, as {@link sampleScenario} returns), or the
+ *     first error one of the key's children ended with
+ */
+export const sampleConcurrently = async (jobs, concurrency = benchJobs()) => {
+    const results = new Map();
+    const tasks = [];
+    for (const job of jobs) {
+        const samples = new Map(job.roots.map(root => [root.name, Array.from({length: job.runs})]));
+        results.set(job.key, samples);
+        for (let run = 0; run < job.runs; run++) for (const root of job.roots) tasks.push({job, root, run, samples});
+    }
+    let next = 0;
+    const worker = async () => {
+        while (next < tasks.length) {
+            const {job, root, run, samples} = tasks[next++];
+            if (results.get(job.key) instanceof Error) continue;
+            try {
+                samples.get(root.name)[run] = await runOnceAsync(job.scenario, job.args, root.dir, job.nodeArgs);
+            } catch (error) {
+                results.set(job.key, error);
+            }
+        }
+    };
+    await Promise.all(Array.from({length: Math.min(concurrency, tasks.length)}, worker));
+
+    return results;
 };
 
 /**

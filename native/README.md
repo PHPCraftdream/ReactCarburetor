@@ -156,6 +156,26 @@ single rename, so a process killed mid-write leaves the original untouched. `no-
 is the first rule with one: a plain `name = () => body` property becomes `name() body`, the method
 form the base class actually dispatches to.
 
+## Benchmarks
+
+`benches/lint.rs` runs the release binary on generated projects — 2 000 module functions, 2 000
+functional classes with their markup, and an `--init-classes` scaffold — with
+[bench-scale-tool](https://crates.io/crates/bench-scale-tool): each workload runs the number of
+iterations pinned in `bench-iters.txt`, so the wall time of a run is the speed signal, and each
+project is checked once before timing, so a binary that stopped analysing cannot look fast.
+
+```bash
+cargo bench --bench lint                   # the pinned counts
+cargo bench --bench lint -- --scale 0.2    # a fifth of every count (or BENCH_SCALE=0.2)
+cargo bench --bench lint -- --calibrate 1  # re-pin each count to about one second
+cargo bench --bench lint -- classes        # only the workloads whose id contains "classes"
+```
+
+A workload missing from `bench-iters.txt` is calibrated on the spot and the file is rewritten;
+commit it. The Performance validation workflow runs the benchmarks once, adds their table to the
+job summary and uploads the file with its artifacts. They are informational: the blocking scaling
+guards stay the `lint-binary/*` gates in `perf/gates/`.
+
 ## The npm packages
 
 The packages are published on npm under the `@react-carburetor` scope.
@@ -211,10 +231,11 @@ repository's [dual-license notice](../LICENSE).
   `src/rules/classes/css/` is the stylesheet front end the functional-class rules share: the
   scanner, the Brick table, floor placement and the class index.
 - `tests/cli.rs` — the end-to-end tests, run against the built binary.
+- `benches/lint.rs` — fixed-iteration benchmarks of the binary; `bench-iters.txt` pins their counts.
 
 Rules are specified in `../docs/hazards.md`: for each one, the code that triggers it, why it is
 silent at runtime, the supported form, and where the rule can be wrong. The specification is the
 contract; this crate and the bridge are implementations of it.
 
-Dependency versions are pinned exactly, including the parser: oxc's AST types change between minor
+Dependency versions are pinned exactly (the bench harness, a dev-dependency, too), including the parser: oxc's AST types change between minor
 versions, and an unpinned parser would break the rules silently rather than loudly.

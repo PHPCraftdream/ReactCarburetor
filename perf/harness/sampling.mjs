@@ -34,6 +34,30 @@ const classifySampling = (entry, read = readScenario) => {
     }) ? 'counter' : 'mixed';
 };
 const keyFor = entry => JSON.stringify([entry.scenario, entry.args ?? [], entry.nodeArgs ?? []]);
+/**
+ * The sample keys whose children may run side by side: no entry measured from them has a verdict
+ * that depends on wall-clock time. Timing is what the `Ms` suffix names (as `compare` reads it), so
+ * an entry is timed when a gate reads an `...Ms` metric, directly or through `over`, when a scale
+ * gate compares it with another entry, or when it is that other entry; an entry without gates is
+ * treated as timed. Counters, heap figures and GC verdicts stay each child's own under load.
+ */
+const concurrentKeys = entries => {
+    const timedIds = new Set();
+    for (const entry of entries) {
+        const gates = Array.isArray(entry.gates) ? entry.gates : [];
+        if (gates.length === 0) timedIds.add(entry.id);
+        for (const gate of gates) {
+            if (!gate || typeof gate.metric !== 'string' || gate.metric.endsWith('Ms')
+                || (typeof gate.over === 'string' && gate.over.endsWith('Ms'))) timedIds.add(entry.id);
+            if (gate?.scale) {
+                timedIds.add(entry.id);
+                timedIds.add(gate.scale.from);
+            }
+        }
+    }
+    const timedKeys = new Set(entries.filter(entry => timedIds.has(entry.id)).map(keyFor));
+    return new Set(entries.map(keyFor).filter(key => !timedKeys.has(key)));
+};
 const demandByKey = (entries, counterRuns = 1, timingRuns = 3, read = readScenario) => {
     for (const [name, count] of [['counterRuns', counterRuns], ['timingRuns', timingRuns]]) {
         if (!Number.isInteger(count) || count <= 0) throw new TypeError(`${name} must be a positive integer`);
@@ -68,4 +92,4 @@ const timingSummary = (title, rows, sink) => {
     if (sink) sink(text);
     else if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, text);
 };
-export default {phaseBudget, classifySampling, demandByKey, elapsedRow, timingSummary, keyFor};
+export default {phaseBudget, classifySampling, demandByKey, elapsedRow, timingSummary, keyFor, concurrentKeys};

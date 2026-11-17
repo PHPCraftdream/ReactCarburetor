@@ -33,6 +33,7 @@ npm run bench -- --lint-gates             # static manifest checks, no scenario 
 npm run bench -- --require-all             # a missing `requires` path fails instead of skipping
 npm run bench -- --list                   # print the entries without running anything
 npm run bench -- --json report.json       # machine-readable results
+BENCH_JOBS=1 npm run bench                # one child at a time, timing-free scenarios included
 ```
 
 A failing entry — a crash, a non-zero child, no `@@` metrics line, including a baseline build that
@@ -55,6 +56,14 @@ embeds each original manifest, so the tightening ratchet works without git histo
 IDs required to match the baseline. Entries
 sharing the same (scenario, args, nodeArgs) are measured once and share their samples. `--only` still
 measures the `scale.from` source entries a selected entry needs, without printing them as selected.
+
+Scenarios no timed gate reads run side by side, `BENCH_JOBS` children at a time (default: one fewer
+than the cores), before the timed ones, which then run alone, one child at a time. Timed means a gate
+on an `...Ms` metric (directly or as the `over` of a ratio), a `scale` gate, or the `scale.from`
+source of one; an entry without gates counts as timed. Counters, heap figures and GC verdicts belong
+to each child process, so neighbours do not move them. `--against` compares every `...Ms` metric and
+runs everything alone; `bench:ci`'s baseline comparison keeps the concurrency, since its timing
+comparisons are informational. `BENCH_JOBS=1` restores one child at a time throughout.
 
 Ad-hoc A/B of one scenario across builds, no gates: `node perf/harness/ab.mjs <scenario.mjs>
 --roots base=<dir>,fix=<dir> [--runs n] [-- args]`. To profile a scenario, run it under

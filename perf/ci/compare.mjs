@@ -1,6 +1,6 @@
 /* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 import {appendFileSync, existsSync, readFileSync, writeFileSync} from 'node:fs';
-import {sampleScenario, summarize, show} from '../harness/measure.mjs';
+import {sampleConcurrently, sampleScenario, summarize, show} from '../harness/measure.mjs';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import sampling from '../harness/sampling.mjs';
@@ -64,6 +64,21 @@ export const comparePrevious = async (baseline, currentRoot, runs, output) => {
         currentGateFailures: 0, timingFailures: 0, crashes: 0, timingInformational: true, rows: []};
     const save = () => writeFileSync(output, JSON.stringify(report, null, 2) + '\n');
     save();
+    // Scenarios no timed gate reads run side by side first; their timings are informational here.
+    const roots = [{name: 'before', dir: report.baselineRoot}, {name: 'after', dir: currentRoot}];
+    const concurrent = sampling.concurrentKeys(entries), jobs = new Map();
+    for (const entry of ordered) {
+        const key = JSON.stringify([entry.scenario, entry.args ?? [], entry.nodeArgs ?? []]);
+        if (!concurrent.has(key) || jobs.has(key) || (entry.requires ?? []).some(item => !existsSync(resolve(item.path)))) continue;
+        jobs.set(key, {key, scenario: resolve('perf/scenarios', entry.scenario + '.mjs'), args: entry.args ?? [], roots,
+            runs: demands.get(key) ?? runs, nodeArgs: entry.nodeArgs ?? [], owner: entry.id});
+    }
+    // A concurrent measurement has no elapsed time of its own: its rows report 0 and `concurrent`.
+    for (const [key, samples] of await sampleConcurrently([...jobs.values()])) {
+        const {owner, runs: sampleCount} = jobs.get(key);
+        measured.set(key, samples instanceof Error ? {owner, sampleCount, concurrent: true, error: samples}
+            : {owner, sampleCount, concurrent: true, samples});
+    }
     for (const entry of ordered) {
         const missing = (entry.requires ?? []).filter(item => !existsSync(resolve(item.path))).map(item => item.path);
         if (missing.length || entry.gates.some(gate => gate.scale && skippedIds.has(gate.scale.from))) {
@@ -91,7 +106,7 @@ export const comparePrevious = async (baseline, currentRoot, runs, output) => {
             const samples = cached.samples;
             const sharedMeasurement = cached.owner !== entry.id;
             const sampleCount = cached.sampleCount;
-            const elapsedMs = sharedMeasurement ? 0 : Date.now() - cached.started;
+            const elapsedMs = sharedMeasurement || cached.concurrent ? 0 : Date.now() - cached.started;
             const base = summarize(samples.get('before')), fixed = summarize(samples.get('after'));
             before.set(entry.id, base); after.set(entry.id, fixed);
             const beforeGates = evaluate(entry, base, before), afterGates = evaluate(entry, fixed, after);
@@ -99,7 +114,7 @@ export const comparePrevious = async (baseline, currentRoot, runs, output) => {
             report.baselineGateFailures += beforeGates.filter(result => !result.ok).length;
             report.currentGateFailures += afterGates.filter(result => !result.ok).length;
             report.timingFailures += timings.filter(result => !result.ok).length;
-            report.rows.push({id: entry.id, beforeGates, afterGates, timings, elapsedMs,
+            report.rows.push({id: entry.id, beforeGates, afterGates, timings, elapsedMs, ...(cached.concurrent ? {concurrent: true} : {}),
                 sampleCount, timingConfidence: sampleCount === 1 ? 'single-pair informational' : 'multi-sample informational',
                 ...(sharedMeasurement ? {sharedMeasurement: true, measurementOwner: cached.owner} : {}),
                 before: Object.fromEntries(Object.entries(base).map(([key, value]) => [key, show(value)])),

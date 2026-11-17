@@ -40,3 +40,8 @@ npm/lint-*/*.tgz
 # Local scratch space and Claude Code runtime state
 /scratch/
 /.claude/scheduled_tasks.lock
+
+# bench-cli scratch files; native/bench-iters.txt (the pinned counts) is committed
+/native/bench-run.log
+/native/bench-history.log
+/native/bench-run-baselines.txt

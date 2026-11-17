@@ -1,6 +1,6 @@
 import {describe, expect, it} from '@rstest/core';
 import sampling from '../../../perf/harness/sampling.mjs';
-const {classifySampling, demandByKey, phaseBudget, elapsedRow, timingSummary} = sampling;
+const {classifySampling, demandByKey, phaseBudget, elapsedRow, timingSummary, concurrentKeys} = sampling;
 
 // Scenario reader that reports clean, deterministic sources for every scenario name.
 const clean = (): string => '';
@@ -104,5 +104,29 @@ describe('counter sampling', () => {
         timingSummary('t', Array.from({length: 25}, (_, i) => ({id: String(i), elapsedMs: i})),
             value => {text = value;});
         expect(text.match(/\| \d+ \|/g)).toHaveLength(20);
+    });
+});
+
+describe('concurrent sampling', () => {
+    it('runs side by side only the keys no timed entry reads', () => {
+        const entries = [
+            {id: 'counter', scenario: 'a', gates: [{metric: 'hits', equals: 2}]},
+            {id: 'heap', scenario: 'b', gates: [{metric: 'heapBytes', max: 5}, {metric: 'collected', equals: true}]},
+            {id: 'timed', scenario: 'c', gates: [{metric: 'costMs', max: 5}]},
+            {id: 'sharesTimed', scenario: 'c', gates: [{metric: 'hits', equals: 1}]},
+            {id: 'overTime', scenario: 'd', gates: [{metric: 'hits', over: 'controlMs', max: 1}]},
+            {id: 'overCounts', scenario: 'e', gates: [{metric: 'maps', over: 'controlMaps', max: 0.5}]},
+            {id: 'source', scenario: 'f', args: [2], gates: [{metric: 'found', equals: 2}]},
+            {id: 'scaled', scenario: 'f', args: [8], gates: [{metric: 'found', equals: 8},
+                {metric: 'lintMs', scale: {from: 'source'}, max: 12}]},
+            {id: 'ungated', scenario: 'g', gates: []},
+        ];
+
+        expect([...concurrentKeys(entries)].sort((a, b) => a.localeCompare(b))).toEqual(['["a",[],[]]', '["b",[],[]]', '["e",[],[]]']);
+    });
+    it('keeps every lint-binary scaling entry serial', async () => {
+        const entries = [...await manifest('lintBinary.mjs'), ...await manifest('lintClasses.mjs')];
+
+        expect(concurrentKeys(entries).size).toBe(0);
     });
 });

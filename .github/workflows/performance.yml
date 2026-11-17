@@ -65,6 +65,22 @@ jobs:
         working-directory: native
         run: cargo build --release --locked --jobs 2
 
+      # bench-scale-tool runs each workload the count pinned in native/bench-iters.txt; a workload
+      # missing from it is calibrated on the spot and the file is uploaded below. Informational.
+      - name: Native linter benchmarks (fixed iterations, informational)
+        working-directory: native
+        env:
+          BENCH_SCALE: '1'
+        run: |
+          cargo bench --locked --bench lint --jobs 2 | Tee-Object -FilePath "$env:RUNNER_TEMP/native-bench.txt"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Add-Content $env:GITHUB_STEP_SUMMARY "### Native linter benchmarks (fixed iterations)"
+          Add-Content $env:GITHUB_STEP_SUMMARY '```text'
+          Get-Content "$env:RUNNER_TEMP/native-bench.txt" | Add-Content $env:GITHUB_STEP_SUMMARY
+          Add-Content $env:GITHUB_STEP_SUMMARY '```'
+          New-Item -ItemType Directory -Force ../worktrees/ci-results | Out-Null
+          Copy-Item bench-iters.txt ../worktrees/ci-results/bench-iters.txt
+
       - name: Build all current library formats
         run: npm run build
 
