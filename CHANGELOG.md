@@ -5,7 +5,7 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-11-17
 
 ### Added
 
@@ -94,7 +94,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - The bridge/binary protocol is now 2. The contract gained the rule ids added since 0.2.0
   (`no-store-read-in-effect-deps`, `require-hoisted-constant`, `no-inline-store-effect`, `prefer-store-effect`,
-  `no-unrecognized-base` and the eleven functional-class rules), the `classes` and `root` config keys and the
+  `no-unrecognized-base`, `max-render-lines` and the eleven functional-class rules), the `classes` and `root` config keys and the
   `--init-classes` flag, so the plugin checks for a `carburetor-lint` of the same release and says so when an older one
   is installed.
 - When the system refuses to start the native binary from inside the host (`spawnSync ... ENOMEM`, which
@@ -109,6 +109,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   rule's own entry wins for the same rule.
 - `no-parent-import` switched on without `roots` no longer stays silent: the plugin reports once per run that it
   checks nothing, and the native CLI rejects such a configuration.
+- CI: the Performance validation workflow runs in parallel parts (one Linux runner per part, a Windows runner for the
+  native gates), each held to five minutes, where it ran for about half an hour on one runner; scenarios with no
+  timed gate run several at a time. The native linter gains fixed-iteration benchmarks on bench-scale-tool.
 
 - `require-subscription-disposal` also reports a `watch` whose disposer is thrown away (`store.watch(select,
   onChange);` or `computed.watch(onChange);` as a statement) and a `storeEffect(...)` statement, whose disposer would

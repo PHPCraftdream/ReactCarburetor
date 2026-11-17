@@ -323,7 +323,7 @@ What people who built with it found in the way, and what to do about each.
   old pattern.
 - **It is young.** The version is `0.x`: a minor release may change behavior, and the
   [changelog](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/CHANGELOG.md) says what. Pin the minor you test against
-  (`~0.2.0`). If your installs require a minimum release age (pnpm `minimumReleaseAge`, npm
+  (`~0.3.0`). If your installs require a minimum release age (pnpm `minimumReleaseAge`, npm
   `--before`), a fresh release is refused for that long: wait, or exempt the `@react-carburetor`
   scope. The ecosystem is small; the engine has no runtime dependencies of its own to wait for.
 - **`no-module-level-store` is not for client-only applications.** It is off in the recommended

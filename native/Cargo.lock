@@ -53,7 +53,7 @@ checksum = "175812e0be2bccb6abe50bb8d566126198344f707e304f45c648fd8f2cc0365e"
 
 [[package]]
 name = "carburetor-lint"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "bench-scale-tool",
  "globset",

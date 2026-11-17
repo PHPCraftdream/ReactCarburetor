@@ -1,6 +1,6 @@
 {
   "name": "@react-carburetor/core",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Fine-grained React state management with a hook-free class-component core, async resources, and native lint rules.",
   "main": "./dist/cjs/Carburetor/index.js",
   "module": "./dist/esm/Carburetor/index.mjs",

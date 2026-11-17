@@ -11,7 +11,7 @@ body:
     attributes:
       label: Package versions
       description: @react-carburetor/core, carburetor-lint (if used), react, react-dom.
-      placeholder: @react-carburetor/core 0.2.0, react 19.3.0
+      placeholder: @react-carburetor/core 0.3.0, react 19.3.0
     validations:
       required: true
   - type: dropdown
